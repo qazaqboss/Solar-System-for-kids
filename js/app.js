@@ -3,6 +3,8 @@ import { BODIES, BY_ID, PLANETS } from "./data/bodies.js";
 import { SYSTEMS, findMoon } from "./data/moons.js";
 import { EARTH } from "./data/earth.js";
 SYSTEMS.earth = EARTH; // система Земли: Луна и искусственные спутники
+EARTH.gen = "Земли"; EARTH.fig = 6;
+const SYS_ORDER = ["earth", "mars", "jupiter", "saturn", "uranus", "neptune"];
 const isSat = (m) => m && m.system === "earth" && m.id !== "moon";
 const satHref = (m) => (isSat(m) ? `#/sat/${m.id}` : `#/moon/${m.id}`);
 // период: минуты / часы / сутки
@@ -73,7 +75,7 @@ function viewHome() {
     <div class="hero">
       <div class="eyebrow">Интерактивный атлас · 3D · для детей и взрослых</div>
       <h1>Анатомия Солнечной системы</h1>
-      <p class="lede">Разбери каждую планету и спутник как механизм: вырежи клин, «разбери» по слоям и узнай, из чего они сделаны. Отдельно — все спутники Юпитера и Сатурна в 3D, с характеристиками и историей открытий.</p>
+      <p class="lede">Разбери каждую планету и спутник как механизм: вырежи клин, «разбери» по слоям и узнай, из чего они сделаны. Отдельно — системы спутников всех планет, у которых они есть: Луна и искусственные спутники Земли, Фобос и Деймос, луны Юпитера, Сатурна, Урана и Нептуна — в 3D, с характеристиками и историей открытий.</p>
     </div>
     ${plate({ fig: "Fig 1", title: "Солнечная система", hint: '<span class="only-mouse">Тяни — вращать · колесо — масштаб · нажми на планету</span><span class="only-touch">Веди пальцем вбок — вращать · коснись планеты</span>', tall: true, halo: false,
       extra: `<div class="controls"><span>Скорость времени</span><div class="btn-row" id="spd">
@@ -85,7 +87,7 @@ function viewHome() {
     <div class="grid" id="planets"></div>
 
     <h2>Спутники планет</h2>
-    <p class="section-note">У Земли одна Луна и тысячи искусственных спутников. У Юпитера ${SYSTEMS.jupiter.total} известных спутников, у Сатурна — ${SYSTEMS.saturn.total}. Каждый с именем разобран отдельно.</p>
+    <p class="section-note">У Меркурия и Венеры спутников нет. У остальных планет — свои системы: у Земли Луна и тысячи искусственных спутников, у Марса ${SYSTEMS.mars.total}, у Юпитера ${SYSTEMS.jupiter.total}, у Сатурна ${SYSTEMS.saturn.total}, у Урана ${SYSTEMS.uranus.total}, у Нептуна ${SYSTEMS.neptune.total}. Каждый спутник с именем разобран отдельно.</p>
     <div class="grid" id="systems"></div>
 
     <h2>Как читать фигуры</h2>
@@ -106,11 +108,11 @@ function viewHome() {
     sg.append(a);
     lazyThumb($("canvas", a), BY_ID.earth, { size: 120 });
   }
-  [["jupiter", "Система Юпитера"], ["saturn", "Система Сатурна"]].forEach(([id, t]) => {
-    const s = SYSTEMS[id];
+  ["mars", "jupiter", "saturn", "uranus", "neptune"].forEach((id) => {
+    const s = SYSTEMS[id], t = `Система ${s.gen}`;
     const a = document.createElement("a");
     a.className = "card"; a.href = `#/system/${id}`;
-    a.innerHTML = `<span class="num">${s.named} с именами · ${s.total} всего</span><canvas class="thumb"></canvas><h3>${t}</h3><p>${Object.keys(s.groups).length} семейств спутников, орбиты в 3D</p>`;
+    a.innerHTML = `<span class="num">${s.named} с именами · ${s.total} всего</span><canvas class="thumb"></canvas><h3>${t}</h3><p>${id === "mars" ? "Фобос и Деймос: разрезы и орбиты в 3D" : `${plural(Object.keys(s.groups).length, "семейство", "семейства", "семейств")} спутников, орбиты в 3D`}</p>`;
     sg.append(a);
     lazyThumb($("canvas", a), BY_ID[id], { size: 120 });
   });
@@ -273,7 +275,7 @@ function viewBody(id) {
   }
   if (b.type === "moon") return viewMoon(id);
   let moonRow = "";
-  if (b.system) moonRow = `<h2>Спутники</h2><p class="section-note">${SYSTEMS[b.system].note}</p><a class="btn" href="#/system/${b.system}">Открыть систему ${b.name === "Юпитер" ? "Юпитера" : "Сатурна"} в 3D →</a>`;
+  if (b.system) moonRow = `<h2>Спутники</h2><p class="section-note">${SYSTEMS[b.system].note}</p><a class="btn" href="#/system/${b.system}">Открыть систему ${SYSTEMS[b.system].gen} в 3D →</a>`;
   if (b.id === "earth") moonRow = `<h2>Спутники Земли</h2><p class="section-note">${esc(EARTH.note)}</p><p><a class="btn" href="#/system/earth">Открыть систему Земли в 3D →</a></p><div class="grid" style="max-width:260px;margin-top:16px" id="mrow"></div>`;
   bodyPage(b, { fig, crumbs: `<a href="#/">Главная</a> / ${b.type === "star" ? "Звезда" : "Планеты"} / ${b.name}`, prev, next, moonRow });
   if (b.id === "earth") $("#mrow").append(cardFor(BY_ID.moon, 1));
@@ -293,7 +295,7 @@ function viewMoon(id) {
   const i = list.findIndex((x) => x.id === id);
   const prev = i > 0 ? { href: `#/moon/${list[i - 1].id}`, name: list[i - 1].name } : null;
   const next = i < list.length - 1 ? { href: `#/moon/${list[i + 1].id}`, name: list[i + 1].name } : null;
-  const gen = sysId === "jupiter" ? "Юпитера" : "Сатурна";
+  const gen = sys.gen;
   const g = moon ? sys.groups[moon.group] : null;
   const moonRow = moon ? `<h2>Орбита</h2><div class="stats">
       <div class="stat"><div class="k">Группа</div><div class="v" style="font-size:14px"><span class="grp-dot" style="background:${g.color}"></span>${esc(g.name)}</div></div>
@@ -303,7 +305,7 @@ function viewMoon(id) {
       <div class="stat"><div class="k">Открыт</div><div class="v">${moon.year}</div></div>
       <div class="stat"><div class="k">Открыл</div><div class="v" style="font-size:13px">${esc(moon.by)}</div></div>
     </div><p style="margin-top:16px"><a class="btn" href="#/system/${sysId}?g=${moon.group}">Показать группу на схеме системы →</a></p>` : "";
-  bodyPage(b, { fig: `Fig ${sysId === "jupiter" ? 3 : 4}.${i + 1}`, crumbs: `<a href="#/">Главная</a> / <a href="#/system/${sysId}">Система ${gen}</a> / ${b.name}`, prev, next, moonRow });
+  bodyPage(b, { fig: `Fig ${sys.fig}.${i + 1}`, crumbs: `<a href="#/">Главная</a> / <a href="#/system/${sysId}">Система ${gen}</a> / ${b.name}`, prev, next, moonRow });
 }
 
 // ------------------------------------------------------------ СИСТЕМА СПУТНИКОВ
@@ -311,7 +313,7 @@ function viewSystem(id, params) {
   const sys = SYSTEMS[id]; if (!sys) return viewNotFound();
   const planet = BY_ID[id];
   const E = id === "earth";
-  const gen = id === "jupiter" ? "Юпитера" : E ? "Земли" : "Сатурна";
+  const gen = sys.gen;
   const speeds = sys.speeds || [[0.25, "¼ сут/с"], [2, "2 сут/с"], [30, "30 сут/с"], [0, "Пауза"]];
   const speed0 = sys.speed ?? 2;
   const counts = Object.fromEntries(Object.keys(sys.groups).map((g) => [g, sys.moons.filter((m) => m.group === g).length]));
@@ -324,14 +326,15 @@ function viewSystem(id, params) {
       <h1>Система ${gen}</h1>
       <p class="lede">${esc(sys.note)}</p>
     </div>
-    ${plate({ fig: id === "jupiter" ? "Fig 3" : E ? "Fig 6" : "Fig 4", title: `Спутники ${gen}`, hint: '<span class="only-mouse">Тяни — вращать · наведи на спутник · нажми — открыть</span><span class="only-touch">Веди пальцем вбок — вращать · коснись спутника</span>', tall: true, halo: false,
+    ${plate({ fig: `Fig ${sys.fig}`, title: `Спутники ${gen}`, hint: '<span class="only-mouse">Тяни — вращать · наведи на спутник · нажми — открыть</span><span class="only-touch">Веди пальцем вбок — вращать · коснись спутника</span>', tall: true, halo: false,
       extra: `<div class="controls"><span>Время</span><div class="btn-row" id="spd">
         ${speeds.map(([v, l]) => `<button class="btn" data-s="${v}" aria-pressed="${v === speed0}">${l}</button>`).join("")}</div>
         <span>Вид</span><div class="btn-row"><button class="btn" id="zin">${E ? "Низкие орбиты" : "Внутренние"}</button><button class="btn" id="zout">Вся система</button></div></div>
       <div class="filters" id="flt"><button class="chip" data-g="" aria-pressed="${!groupG}">Все</button>${Object.entries(sys.groups).map(([k, g]) => `<button class="chip" data-g="${k}" aria-pressed="${groupG === k}"><i style="background:${g.color}"></i>${esc(g.name)} <span class="c">${counts[k]}</span></button>`).join("")}</div>
       <p class="caption">${E
         ? `<b>Шкала расстояний — логарифмическая:</b> от МКС (420 км) до телескопа «Джеймс Уэбб» (1,5 млн км) — разница в 3 500 раз. Линии — орбиты известных аппаратов, точки — облака целых группировок (${Object.values(sys.groups).filter((g) => g.real).map((g) => g.real).join("; ")}). Точек меньше, чем настоящих спутников, иначе за ними не было бы видно Землю. «Уэбб», «Евклид», SOHO и DSCOVR не обращаются вокруг Земли: они держатся в точках Лагранжа и вместе с Землёй облетают Солнце за год.`
-        : `<b>Шкала расстояний — логарифмическая:</b> каждые ≈5 делений радиуса — в 10 раз дальше. Иначе внутренние спутники слились бы с планетой, а внешние улетели бы за экран. Наклоны орбит и направление движения настоящие. Линии — спутники с именами, точки — ${sys.total - sys.named} безымянных (их орбиты показаны условно, по параметрам семейства).`}</p>` })}
+        : id === "mars" ? `<b>Расстояния почти в реальном масштабе:</b> Фобос летит всего в 6 000 км над поверхностью Марса, Деймос — в 20 000 км. Сами спутники нарисованы крупнее, иначе их не было бы видно: Фобос в 300 раз меньше Марса.`
+        : `<b>Шкала расстояний — логарифмическая:</b> каждые ≈5 делений радиуса — в 10 раз дальше. Иначе внутренние спутники слились бы с планетой, а внешние улетели бы за экран. Наклоны орбит и направление движения настоящие. Линии — спутники с именами${sys.total > sys.named ? `, точки — ${sys.total - sys.named} ещё безымянных (их орбиты показаны условно, по параметрам семейства)` : ""}.`}</p>` })}
 
     <h2>${E ? "Группы спутников" : "Семейства"}</h2>
     <div class="facts">${Object.entries(sys.groups).map(([k, g]) => `<div class="fact"><span class="eyebrow"><span class="grp-dot" style="background:${g.color}"></span>${E ? (g.real || `${counts[k]} на схеме`) : `${counts[k]} с именами`}${g.retro ? " · обратные" : ""}</span><b style="color:var(--strong)">${esc(g.name)}</b><br>${esc(g.desc)}</div>`).join("")}</div>
@@ -508,7 +511,7 @@ function route(keepScroll = false) {
   const mark = (sel) => $(`.nav a[href="${sel}"]`)?.setAttribute("aria-current", "page");
   $(".nav").classList.remove("open");
   if (!parts.length) { viewHome(); mark("#/"); }
-  else if (parts[0] === "body") { viewBody(parts[1]); if (["jupiter", "saturn", "earth"].includes(parts[1])) mark(`#/system/${parts[1]}`); else mark("#/planets"); }
+  else if (parts[0] === "body") { viewBody(parts[1]); if (SYS_ORDER.includes(parts[1])) mark(`#/system/${parts[1]}`); else mark("#/planets"); }
   else if (parts[0] === "moon") { const m = findMoon(parts[1]); if (isSat(m)) { location.replace(`#/sat/${m.id}`); return; } viewMoon(parts[1]); if (m) mark(`#/system/${m.system}`); }
   else if (parts[0] === "sat") { viewSat(parts[1]); mark("#/system/earth"); }
   else if (parts[0] === "system") { viewSystem(parts[1], params); mark(`#/system/${parts[1]}`); }

@@ -372,6 +372,20 @@ const STYLES = {
       return col;
     };
   },
+  triton(N) {
+    return (la, lo, x, y, z) => {
+      // север — «дынная корка» (ячеистый рельеф), юг — розоватая шапка из азотного льда
+      const cell = N.ridge(x * 9, y * 9, z * 9, 3);
+      let col = mix(hex("#b7a89a"), hex("#d8cabd"), clamp01(0.5 + N.fbm(x * 4, y * 4, z * 4, 4) * 0.8));
+      col = mix(col, hex("#8a7a6c"), smooth(0.86, 0.98, cell) * 0.55);
+      const cap = smooth(-0.05, -0.35, la + N.fbm(x * 3, y * 3, z * 3, 3) * 0.25);
+      col = mix(col, hex("#f1dcd2"), cap);
+      // тёмные полосы от гейзеров на шапке, вытянутые ветром
+      const streak = smooth(0.9, 0.98, N.ridge(x * 2 + z * 6, y * 18, z * 2, 2));
+      col = mix(col, hex("#5a4a42"), streak * cap * 0.6);
+      return col;
+    };
+  },
   hyperion(N) {
     const cr = craterField(19, 420, 0.02, 0.16);
     return (la, lo, x, y, z) => {

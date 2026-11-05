@@ -1,4 +1,4 @@
-// Fig — система спутников Юпитера или Сатурна в 3D.
+// Fig — система спутников планеты в 3D (Земля, Марс, Юпитер, Сатурн, Уран, Нептун).
 // Радиус орбиты сжат логарифмом (от 128 тыс. до 25 млн км), наклоны и
 // направление движения настоящие: обратные спутники летят в другую сторону.
 import * as THREE from "three";
@@ -24,8 +24,9 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
   if (planet.rings) {
     // кольца в той же логарифмической шкале
     const rt = new THREE.CanvasTexture(makeRingTexture(planet.rings));
-    const a0 = 67000, a1 = 141000;
-    const ri = P_R * 1.15, ro = rOf(Math.max(a1, aMin * 1.06)) * 0.985;
+    // внешний край колец: Сатурн — кольцо F, Уран — кольцо ε
+    const a1 = planet.rings === "saturn" ? 141000 : 51149;
+    const ri = P_R * (planet.rings === "saturn" ? 1.15 : 1.3), ro = Math.max(ri * 1.15, rOf(Math.max(a1, aMin * 1.03)) * 0.985);
     const g = new THREE.RingGeometry(ri, ro, 160, 1);
     const pa = g.attributes.position, uv = g.attributes.uv;
     for (let k = 0; k < pa.count; k++) uv.setXY(k, (Math.hypot(pa.getX(k), pa.getY(k)) - ri) / (ro - ri), 0.5);
@@ -38,7 +39,7 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
 
   const groupColor = (g) => new THREE.Color(system.groups[g].color);
   const items = [];
-  const rnd = mulberry(system.id === "jupiter" ? 5 : system.id === "earth" ? 13 : 9);
+  const rnd = mulberry([...system.id].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0);
 
   function orbitBasis(incDeg, node) {
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(Math.cos(node), 0, Math.sin(node)), THREE.MathUtils.degToRad(incDeg));
