@@ -399,17 +399,11 @@ const STYLES = {
 
 const cache = new Map();
 
-/** Сгенерировать текстуру (canvas) для описания вида тела. */
-export function makeTexture(look, w = 1024, h = 512) {
-  const key = JSON.stringify(look) + w;
-  if (cache.has(key)) return cache.get(key);
+/** Посчитать пиксели текстуры (RGBA). Работает и в Web Worker. */
+export function renderPixels(look, w, h) {
   const N = makeNoise(look.seed || 1);
   const fn = STYLES[look.style](N, look);
-  const cv = document.createElement("canvas");
-  cv.width = w; cv.height = h;
-  const ctx = cv.getContext("2d");
-  const img = ctx.createImageData(w, h);
-  const d = img.data;
+  const d = new Uint8ClampedArray(w * h * 4);
   for (let j = 0; j < h; j++) {
     const lat = Math.PI / 2 - ((j + 0.5) / h) * Math.PI;
     const cl = Math.cos(lat), y = Math.sin(lat);
@@ -421,9 +415,56 @@ export function makeTexture(look, w = 1024, h = 512) {
       d[k] = c[0]; d[k + 1] = c[1]; d[k + 2] = c[2]; d[k + 3] = 255;
     }
   }
-  ctx.putImageData(img, 0, 0);
+  return d;
+}
+
+function toCanvas(px, w, h) {
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  cv.getContext("2d").putImageData(new ImageData(px, w, h), 0, 0);
+  return cv;
+}
+
+/** Сгенерировать текстуру синхронно (для маленьких размеров). */
+export function makeTexture(look, w = 1024, h = 512) {
+  const key = JSON.stringify(look) + w;
+  if (cache.has(key)) return cache.get(key);
+  const cv = toCanvas(renderPixels(look, w, h), w, h);
   cache.set(key, cv);
   return cv;
+}
+
+// ---------- фоновая генерация в Web Worker, чтобы страница не «замирала»
+let worker = null, workerFailed = false, seq = 0;
+const pending = new Map();
+const asyncCache = new Map();
+function getWorker() {
+  if (worker || workerFailed) return worker;
+  try {
+    worker = new Worker(new URL("./texworker.js", import.meta.url), { type: "module" });
+    worker.onmessage = (e) => { const p = pending.get(e.data.id); pending.delete(e.data.id); p?.(e.data.px); };
+    worker.onerror = () => { workerFailed = true; worker = null; for (const [id, res] of pending) res(null); pending.clear(); };
+  } catch { workerFailed = true; worker = null; }
+  return worker;
+}
+const idle = () => new Promise((r) => (window.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 300 }) : setTimeout(r, 16)));
+
+/** Асинхронно получить canvas с текстурой. */
+export function makeTextureAsync(look, w = 1024, h = 512) {
+  const key = JSON.stringify(look) + w;
+  if (cache.has(key)) return Promise.resolve(cache.get(key));
+  if (asyncCache.has(key)) return asyncCache.get(key);
+  const pr = (async () => {
+    let px = null;
+    const wk = getWorker();
+    if (wk) px = await new Promise((res) => { const id = ++seq; pending.set(id, res); wk.postMessage({ id, look, w, h }); });
+    if (!px) { await idle(); px = renderPixels(look, w, h); }
+    const cv = toCanvas(px, w, h);
+    cache.set(key, cv);
+    return cv;
+  })();
+  asyncCache.set(key, pr);
+  return pr;
 }
 
 /** Текстура колец Сатурна/Урана: полоса по радиусу (x = радиус, y — нет). */

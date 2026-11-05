@@ -1,7 +1,7 @@
 // «Анатомический» 3D-разрез тела: вложенные оболочки-слои, вырезанный клин,
 // ступенчатая «разборка» и выноски с подписями, как в фигурах Anatomy.
 import * as THREE from "three";
-import { createStage, follow, reducedMotion, cssVar } from "./gl.js";
+import { createStage, follow, reducedMotion, cssVar, liveTexture, isMobile } from "./gl.js";
 import { makeTexture, makeRingTexture, makeNoise, hex } from "./textures.js";
 
 const TAU = Math.PI * 2;
@@ -49,26 +49,34 @@ function visualRadii(layers, R) {
 }
 
 function shellGeometry(r, sf, phiA, phiB, segW, segH) {
-  const pos = [], uv = [], idx = [];
-  for (let j = 0; j <= segH; j++) {
-    const th = (j / segH) * Math.PI;
-    for (let i = 0; i <= segW; i++) {
-      const ph = phiA + ((phiB - phiA) * i) / segW;
-      const d = dirOf(th, ph);
-      const s = r * sf(d);
-      pos.push(d[0] * s, d[1] * s, d[2] * s);
-      uv.push((ph + Math.PI) / TAU, 1 - th / Math.PI);
+  // Долготы берём на фиксированной сетке (плюс точные края клина):
+  // так форма тела и тригонометрия не пересчитываются каждый кадр анимации.
+  const step = TAU / segW;
+  const phis = [phiA];
+  for (let k = Math.floor(phiA / step) + 1; k * step < phiB - step * 0.25; k++) if (k * step > phiA + step * 0.25) phis.push(k * step);
+  phis.push(phiB);
+  const cols = phis.length, rows = segH + 1;
+  const pos = new Float32Array(cols * rows * 3), uv = new Float32Array(cols * rows * 2);
+  let p = 0, q = 0;
+  for (let j = 0; j < rows; j++) {
+    const th = (j / segH) * Math.PI, st = Math.sin(th), ct = Math.cos(th);
+    for (let i = 0; i < cols; i++) {
+      const ph = phis[i];
+      const d = [st * Math.sin(ph), ct, st * Math.cos(ph)];
+      const sc = r * sf(d);
+      pos[p++] = d[0] * sc; pos[p++] = d[1] * sc; pos[p++] = d[2] * sc;
+      uv[q++] = (ph + Math.PI) / TAU; uv[q++] = 1 - th / Math.PI;
     }
   }
-  const W = segW + 1;
-  for (let j = 0; j < segH; j++) for (let i = 0; i < segW; i++) {
-    const a = j * W + i, b = a + 1, c = a + W, d = c + 1;
+  const idx = [];
+  for (let j = 0; j < segH; j++) for (let i = 0; i < cols - 1; i++) {
+    const a = j * cols + i, b = a + 1, c = a + cols, d = c + 1;
     if (j !== 0) idx.push(a, c, b);
     if (j !== segH - 1) idx.push(b, c, d);
   }
   const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
   g.setIndex(idx);
   g.computeVertexNormals();
   return g;
@@ -105,7 +113,7 @@ function capGeometry(rIn, rOut, sf, ph, segH, base, top) {
 function layerTexture(color, seed) {
   // мелкая зернистость для внутренних оболочек
   const look = { style: "solid", seed, color: shade(color, -0.12), color2: shade(color, 0.1), freq: 7, amp: 1.4 };
-  return makeTexture(look, 256, 128);
+  return isMobile() ? makeTexture(look, 128, 64) : makeTexture(look, 256, 128);
 }
 function shade(c, k) {
   const [r, g, b] = hex(c);
@@ -124,17 +132,15 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
   const vis = visualRadii(body.layers, body.radius);
   const solidCount = body.layers.filter((l) => !l.gas).length;
   const irregular = !!body.shape;
-  const segW = irregular ? 120 : 96, segH = irregular ? 80 : 64;
+  const segW = S.mobile ? (irregular ? 84 : 64) : (irregular ? 120 : 96), segH = S.mobile ? (irregular ? 56 : 44) : (irregular ? 80 : 64);
 
   const group = new THREE.Group();
   scene.add(group);
   if (body.tilt) group.rotation.z = THREE.MathUtils.degToRad(Math.min(body.tilt, 30));
 
   // --- материалы
-  const surfTex = new THREE.CanvasTexture(makeTexture(body.look, irregular ? 512 : 1024, irregular ? 256 : 512));
-  surfTex.colorSpace = THREE.SRGBColorSpace;
-  surfTex.wrapS = THREE.RepeatWrapping;
-  surfTex.anisotropy = 4;
+  const surfTex = liveTexture(body.look, irregular ? 512 : 1024, irregular ? 256 : 512);
+  surfTex.anisotropy = S.mobile ? 2 : 4;
 
   const layers = body.layers.map((l, i) => {
     const outerSolid = i === solidCount - 1;
@@ -220,7 +226,7 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
       let cutDeg = state.cut * (1 + state.explode * stepFrac * 1.3) + (L.def.gas ? state.cut * 0.4 : 0);
       if (state.cut > 0.3) cutDeg += state.explode * 14;
       cutDeg = Math.min(300, cutDeg);
-      if (Math.abs(cutDeg - L.cut) < 0.05) return;
+      if (Math.abs(cutDeg - L.cut) < 0.15) return;
       L.cut = cutDeg;
       const cut = THREE.MathUtils.degToRad(cutDeg);
       const phiA = WEDGE_C + cut / 2, phiB = WEDGE_C - cut / 2 + TAU;
@@ -333,15 +339,28 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
   // --- указатель
   const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
   const pickables = layers.flatMap((L) => [L.shell, L.capA, L.capB]);
-  S.renderer.domElement.addEventListener("pointermove", (e) => {
+  function pickLayer(e) {
     const r = S.renderer.domElement.getBoundingClientRect();
     ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ptr, camera);
     const hits = ray.intersectObjects(pickables.filter((m) => m.visible), false).filter((h) => !body.layers[h.object.userData.layer].gas || h.object !== layers[h.object.userData.layer].shell);
-    setHover(hits.length ? hits[0].object.userData.layer : -1);
+    return hits.length ? hits[0].object.userData.layer : -1;
+  }
+  let rafPick = 0, lastMove = null;
+  S.renderer.domElement.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "touch") return; // на телефоне подсветка — по касанию
+    lastMove = e;
+    if (!rafPick) rafPick = requestAnimationFrame(() => { rafPick = 0; setHover(pickLayer(lastMove)); });
   });
-  S.renderer.domElement.addEventListener("pointerleave", () => setHover(-1));
-  S.renderer.domElement.addEventListener("click", () => { if (state.hover >= 0) setPinned(state.pinned === state.hover ? -1 : state.hover); });
+  S.renderer.domElement.addEventListener("pointerleave", (e) => { if (e.pointerType !== "touch") setHover(-1); });
+  let downAt = null;
+  S.renderer.domElement.addEventListener("pointerdown", (e) => { downAt = [e.clientX, e.clientY]; });
+  S.renderer.domElement.addEventListener("pointerup", (e) => {
+    // короткое касание/клик (без перетаскивания) — выбрать слой
+    if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 8) return;
+    const i = pickLayer(e);
+    setPinned(i === state.pinned ? -1 : i);
+  });
 
   // клавиатура: ←/→ слой, ↑/↓ разрез, E — разобрать
   S.renderer.domElement.addEventListener("keydown", (e) => {

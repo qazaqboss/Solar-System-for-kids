@@ -331,3 +331,65 @@ footer a { color: var(--text); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* ======================================================================
+   Телефоны и планшеты: плавность и удобство пальцем
+   ====================================================================== */
+html { -webkit-tap-highlight-color: transparent; scroll-behavior: smooth; }
+button, .btn, .chip, a, input[type="range"] { touch-action: manipulation; }
+.card canvas.thumb, table.cat canvas.mini { opacity: 0; transition: opacity .5s var(--ease); }
+.card canvas.thumb.ready, table.cat canvas.mini.ready { opacity: 1; }
+.only-touch { display: none; }
+.legend span[data-i] { cursor: pointer; }
+.legend span.on { color: var(--strong); }
+.stage { contain: layout paint; }
+.stage canvas.gl { -webkit-user-select: none; user-select: none; }
+
+@media (pointer: coarse) {
+  .only-touch { display: inline; }
+  .only-mouse { display: none; }
+  /* размытие под шапкой дорого при прокрутке — делаем шапку сплошной */
+  .topbar { backdrop-filter: none; background: var(--page); }
+  .btn { min-height: 40px; padding: 10px 14px; }
+  .chip { min-height: 36px; }
+  input[type="range"] { height: 36px; }
+  input[type="range"]::-webkit-slider-thumb { width: 24px; height: 24px; margin-top: -12px; }
+  input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; }
+  .card:hover { transform: none; }
+  .layers-list li { padding: 14px 4px; }
+}
+
+@media (max-width: 640px) {
+  body { font-size: 15.5px; }
+  .topbar { padding-top: max(10px, env(safe-area-inset-top)); padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+  .nav a, .nav .icon-btn { padding: 12px 6px; font-size: 13px; }
+  main { padding-bottom: max(60px, env(safe-area-inset-bottom)); }
+  .hero { padding: 26px 0 0; }
+  h2 { margin-top: 48px; }
+  .stage.tall { aspect-ratio: 1 / 1; }
+  .controls { flex-direction: column; align-items: stretch; gap: 12px; }
+  .ctl { justify-content: space-between; }
+  .ctl input[type="range"] { flex: 1; width: auto; }
+  .btn-row { width: 100%; }
+  .btn-row .btn { flex: 1 1 auto; }
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .card { padding: 12px 12px 10px; }
+  .card canvas.thumb { width: 96px; height: 96px; }
+  .card p { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 12.5px; }
+  .card .meta { font-size: 9.5px; }
+  .tag { font-size: 9.5px; padding: 3px 5px; }
+  .tag.small { display: none; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat { padding: 12px; }
+  .stat .v { font-size: 15px; }
+  .plate-corner.br { left: 12px; right: 12px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .plate-corner.bl { bottom: 34px; }
+  .pager { flex-direction: column; }
+  .filters { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .filters::-webkit-scrollbar { display: none; }
+  .chip { flex: none; }
+}
+/* 3D-сцена плавно проявляется, когда готова */
+.stage canvas.gl { opacity: 0; transition: opacity .6s var(--ease); }
+.stage.live canvas.gl { opacity: 1; }
+.stage.live .loading { opacity: 0; pointer-events: none; transition: opacity .4s; }

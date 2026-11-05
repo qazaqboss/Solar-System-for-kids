@@ -1,21 +1,20 @@
 // Fig 1 — Солнечная система: планеты на орбитах (радиусы орбит сжаты корнем,
 // размеры тел — логарифмом), пояс астероидов, спокойный тур и подписи.
 import * as THREE from "three";
-import { createStage, follow, cssVar, reducedMotion } from "./gl.js";
+import { createStage, follow, cssVar, reducedMotion, liveTexture, declutter } from "./gl.js";
 import { makeTexture, makeRingTexture } from "./textures.js";
 
 const orbitR = (au) => 2.2 + Math.sqrt(au) * 5.2;
 
 export function mountOrrery({ stage, labelsEl, planets, sun, onReadout, onPick }) {
-  const S = createStage(stage, { fov: 32, far: 4000 });
+  const S = createStage(stage, { fov: 32, far: 4000, fitWidth: true });
   const { scene, camera, controls } = S;
   const lineMat = new THREE.LineBasicMaterial({ color: new THREE.Color(cssVar("--lo")), transparent: true, opacity: 0.9 });
   const lineHi = new THREE.LineBasicMaterial({ color: new THREE.Color(cssVar("--strong")) });
 
   // Солнце
-  const sunTex = new THREE.CanvasTexture(makeTexture(sun.look, 512, 256));
-  sunTex.colorSpace = THREE.SRGBColorSpace;
-  const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(1.35, 48, 32), new THREE.MeshBasicMaterial({ map: sunTex }));
+  const sunTex = liveTexture(sun.look, 512, 256);
+  const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(1.35, S.mobile ? 32 : 48, S.mobile ? 20 : 32), new THREE.MeshBasicMaterial({ map: sunTex }));
   sunMesh.userData.id = "sun";
   scene.add(sunMesh);
   const glowCv = document.createElement("canvas"); glowCv.width = glowCv.height = 128;
@@ -38,9 +37,8 @@ export function mountOrrery({ stage, labelsEl, planets, sun, onReadout, onPick }
     scene.add(line);
     // планета
     const size = 0.22 + Math.log10(p.radius / 2000) * 0.32;
-    const tex = new THREE.CanvasTexture(makeTexture(p.look, 256, 128));
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 40, 28), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }));
+    const tex = liveTexture(p.look, 256, 128, { mobileScale: 1 });
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, S.mobile ? 24 : 40, S.mobile ? 16 : 28), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }));
     mesh.userData.id = p.id;
     const holder = new THREE.Group();
     holder.add(mesh);
@@ -71,7 +69,7 @@ export function mountOrrery({ stage, labelsEl, planets, sun, onReadout, onPick }
 
   // пояс астероидов (2,1–3,3 а. е.)
   {
-    const n = 1400, pos = new Float32Array(n * 3);
+    const n = S.mobile ? 700 : 1400, pos = new Float32Array(n * 3);
     for (let k = 0; k < n; k++) {
       const au = 2.1 + Math.random() * 1.2, t = Math.random() * Math.PI * 2, r = orbitR(au);
       pos[k * 3] = Math.cos(t) * r; pos[k * 3 + 1] = (Math.random() - 0.5) * 0.35; pos[k * 3 + 2] = Math.sin(t) * r;
@@ -84,8 +82,9 @@ export function mountOrrery({ stage, labelsEl, planets, sun, onReadout, onPick }
   }
 
   // камера: возвышение ≈30°, как в изометрии Anatomy
-  const D = 52;
-  const EL = THREE.MathUtils.degToRad(28), AZ = THREE.MathUtils.degToRad(-30);
+  // на телефоне смотрим выше и ближе: диск орбит лучше заполняет квадратный кадр
+  const D = S.mobile ? 44 : 52;
+  const EL = THREE.MathUtils.degToRad(S.mobile ? 48 : 28), AZ = THREE.MathUtils.degToRad(-30);
   camera.position.set(Math.sin(AZ) * Math.cos(EL) * D, Math.sin(EL) * D, Math.cos(AZ) * Math.cos(EL) * D);
   controls.minDistance = 10; controls.maxDistance = 110;
   controls.maxPolarAngle = Math.PI * 0.49;
@@ -118,13 +117,13 @@ export function mountOrrery({ stage, labelsEl, planets, sun, onReadout, onPick }
       const p = new THREE.Vector3(); it.mesh.getWorldPosition(p);
       const sp = S.project(p);
       const d = Math.hypot(sp.x - (e.clientX - r.left), sp.y - (e.clientY - r.top));
-      if (d < 22 && d < bestD) { best = it; bestD = d; }
+      if (d < (e.pointerType === "touch" ? 34 : 22) && d < bestD) { best = it; bestD = d; }
     }
     if (!best) { const h = ray.intersectObjects(pickMeshes, false); if (h.length) best = items.find((x) => x.mesh === h[0].object); }
     return best;
   }
   let downAt = null;
-  S.renderer.domElement.addEventListener("pointermove", (e) => { const it = pick(e); setHover(it ? it.id : null); S.renderer.domElement.style.cursor = it ? "pointer" : ""; });
+  S.renderer.domElement.addEventListener("pointermove", (e) => { if (e.pointerType === "touch") return; const it = pick(e); setHover(it ? it.id : null); S.renderer.domElement.style.cursor = it ? "pointer" : ""; });
   S.renderer.domElement.addEventListener("pointerdown", (e) => { downAt = [e.clientX, e.clientY]; });
   S.renderer.domElement.addEventListener("pointerup", (e) => {
     if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return;
@@ -149,13 +148,15 @@ export function mountOrrery({ stage, labelsEl, planets, sun, onReadout, onPick }
       const rr = Math.hypot(camera.position.x, camera.position.z);
       camera.position.x = Math.sin(a) * rr; camera.position.z = Math.cos(a) * rr;
     }
+    const labels = [];
     for (const tg of tags) {
       tg.item.mesh.getWorldPosition(v);
       v.y += (tg.item.size || 1.35) * (tg.item.body.rings ? 1.1 : 1);
       const p = S.project(v);
       tg.el.style.left = p.x + "px"; tg.el.style.top = p.y + "px";
-      tg.el.classList.toggle("hidden", p.z > 1);
+      labels.push({ el: tg.el, x: p.x, y: p.y, prio: tg.item.id === hoverId ? 1e9 : tg.item.body.radius, hidden: p.z > 1 });
     }
+    declutter(labels, S.width);
     readout();
   });
   S.start();

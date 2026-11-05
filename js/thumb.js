@@ -1,13 +1,13 @@
 // Миниатюры тел без WebGL: шар (или «картофелина»), освещённый сверху слева,
 // рисуется попиксельно из той же процедурной текстуры.
-import { makeTexture } from "./textures.js";
+import { makeTextureAsync } from "./textures.js";
 import { shapeFn } from "./anatomy3d.js";
 
 const texData = new Map();
-function pixels(look, w, h) {
+async function pixels(look, w, h) {
   const key = JSON.stringify(look) + w;
   if (texData.has(key)) return texData.get(key);
-  const cv = makeTexture(look, w, h);
+  const cv = await makeTextureAsync(look, w, h);
   const d = cv.getContext("2d").getImageData(0, 0, w, h).data;
   const out = { d, w, h };
   texData.set(key, out);
@@ -15,14 +15,14 @@ function pixels(look, w, h) {
 }
 
 /** Нарисовать тело в canvas. opts: {size, rot(рад), shape, rings} */
-export function drawThumb(canvas, body, { size = 120, rot = 0.6 } = {}) {
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+export async function drawThumb(canvas, body, { size = 120, rot = 0.6 } = {}) {
+  const dpr = Math.min(body.shape ? (size <= 48 ? 1 : 1.5) : 2, window.devicePixelRatio || 1);
   const S = Math.round(size * dpr);
-  canvas.width = S; canvas.height = S;
-  const ctx = canvas.getContext("2d");
   const small = size <= 48;
   const tw = small ? 256 : 512, th = tw / 2;
-  const T = pixels(body.look, tw, th);
+  const T = await pixels(body.look, tw, th);
+  canvas.width = S; canvas.height = S;
+  const ctx = canvas.getContext("2d");
   const img = ctx.createImageData(S, S);
   const sf = body.shape ? shapeFn(body.shape) : null;
   const ringed = body.rings;
@@ -44,7 +44,7 @@ export function drawThumb(canvas, body, { size = 120, rot = 0.6 } = {}) {
       if (!sf) {
         if (rr <= 1) hit = [x, y, Math.sqrt(1 - rr)];
       } else if (rr <= 2.2) {
-        for (let z = 1.5; z > -1.5; z -= 0.04) {
+        for (let z = 1.5; z > -1.5; z -= small ? 0.09 : 0.04) {
           const len = Math.hypot(x, y, z);
           const d = [x / len, y / len, z / len];
           const dd = toBody(d, ct, st, rot);
@@ -104,9 +104,24 @@ const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 function norm(a) { const l = Math.hypot(...a); return a.map((v) => v / l); }
 
 /** Ленивые миниатюры: рисуются, когда попадают на экран. */
+// Очередь: рисуем по одной миниатюре в свободное время, чтобы прокрутка шла плавно.
+const queue = [];
+let busy = false;
+async function pump() {
+  if (busy) return;
+  busy = true;
+  while (queue.length) {
+    const cv = queue.shift();
+    if (!cv.isConnected) continue;
+    await new Promise((r) => (window.requestIdleCallback ? requestIdleCallback(r, { timeout: 200 }) : setTimeout(r, 16)));
+    try { await cv.__draw(); cv.classList.add("ready"); } catch (e) { console.warn(e); }
+  }
+  busy = false;
+}
 const lazy = new IntersectionObserver((entries) => {
-  for (const e of entries) if (e.isIntersecting) { lazy.unobserve(e.target); e.target.__draw?.(); }
-}, { rootMargin: "200px" });
+  for (const e of entries) if (e.isIntersecting) { lazy.unobserve(e.target); queue.push(e.target); }
+  pump();
+}, { rootMargin: "300px" });
 export function lazyThumb(canvas, body, opts) {
   canvas.__draw = () => drawThumb(canvas, body, opts);
   lazy.observe(canvas);

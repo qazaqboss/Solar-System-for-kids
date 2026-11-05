@@ -19,6 +19,7 @@ function setTheme(t) {
   document.documentElement.dataset.theme = t;
   try { localStorage.setItem("theme", t); } catch {}
   themeBtn.textContent = t === "dark" ? "☀ Светлая" : "☾ Тёмная";
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", t === "dark" ? "#0b0b0b" : "#f2f2ef");
 }
 let saved = null; try { saved = localStorage.getItem("theme"); } catch {}
 setTheme(saved || "light");
@@ -66,7 +67,7 @@ function viewHome() {
       <h1>Анатомия Солнечной системы</h1>
       <p class="lede">Разбери каждую планету и спутник как механизм: вырежи клин, «разбери» по слоям и узнай, из чего они сделаны. Отдельно — все спутники Юпитера и Сатурна в 3D, с характеристиками и историей открытий.</p>
     </div>
-    ${plate({ fig: "Fig 1", title: "Солнечная система", hint: "Тяни — вращать · колесо — масштаб · нажми на планету", tall: true, halo: false,
+    ${plate({ fig: "Fig 1", title: "Солнечная система", hint: '<span class="only-mouse">Тяни — вращать · колесо — масштаб · нажми на планету</span><span class="only-touch">Веди пальцем вбок — вращать · коснись планеты</span>', tall: true, halo: false,
       extra: `<div class="controls"><span>Скорость времени</span><div class="btn-row" id="spd">
         <button class="btn" data-s="2">2 сут/с</button><button class="btn" data-s="20" aria-pressed="true">20 сут/с</button><button class="btn" data-s="120">120 сут/с</button><button class="btn" data-s="0">Пауза</button></div></div>
       <p class="caption"><b>Масштаб условный.</b> Если бы расстояния были настоящими, Нептун оказался бы в 77 раз дальше Меркурия, а планеты — меньше пикселя. Поэтому радиусы орбит сжаты корнем, а размеры планет — логарифмом. Скорости движения настоящие: за время, пока Меркурий делает 684 оборота, Нептун проходит один.</p>` })}
@@ -107,7 +108,7 @@ function viewHome() {
   mountLater(async (stale) => {
     const { mountOrrery } = await import("./orrery.js");
     if (stale()) return;
-    const stage = $(".stage"); $(".loading", stage)?.remove();
+    const stage = $(".stage");
     current = mountOrrery({ stage, labelsEl: $(".labels", stage), planets: PLANETS, sun, onReadout: readoutSetter(app), onPick: (id) => (location.hash = `#/body/${id}`) });
     $("#spd").addEventListener("click", (e) => {
       const b = e.target.closest("button"); if (!b) return;
@@ -140,13 +141,13 @@ function bodyPage(b, { fig, crumbs, prev, next, moonRow }) {
       <h1>${b.name}</h1>
       <p class="lede">${esc(b.tagline)}</p>
     </div>
-    ${plate({ fig, title: `${b.name} · разрез`, hint: "Тяни — вращать · наведи на слой · ← → слои",
+    ${plate({ fig, title: `${b.name} · разрез`, hint: '<span class="only-mouse">Тяни — вращать · наведи на слой · ← → слои</span><span class="only-touch">Веди пальцем вбок — вращать · коснись слоя</span>',
       extra: `<div class="controls">
         <label class="ctl">Разрез <input type="range" id="cut" min="0" max="180" value="90"><output id="cutv">90°</output></label>
         <label class="ctl">Разобрать <input type="range" id="exp" min="0" max="100" value="0"><output id="expv">0%</output></label>
         <div class="btn-row"><button class="btn" id="apart">Разобрать на слои</button><button class="btn" id="whole">Целиком</button></div>
       </div>
-      <div class="legend">${b.layers.map((l, i) => `<span><i style="background:${l.color}"></i>${String(i + 1).padStart(2, "0")} ${esc(l.name)}</span>`).join("")}</div>
+      <div class="legend" id="legend">${b.layers.map((l, i) => `<span data-i="${i}"><i style="background:${l.color}"></i>${String(i + 1).padStart(2, "0")} ${esc(l.name)}</span>`).join("")}</div>
       <p class="caption"><b>Как читать.</b> Слои пронумерованы от центра. Толщина тонких слоёв увеличена для наглядности; настоящие глубины — в списке ниже. ${b.generic ? "Строение такого маленького спутника напрямую не измерено — это модель по его плотности и типу." : "Строение недр — модели, построенные по гравитации, магнитным полям, сейсмике и составу; миссии их уточняют."}</p>` })}
 
     <div class="stats">${b.stats.map(([k, v, u]) => `<div class="stat"><div class="k">${esc(k)}</div><div class="v">${esc(v)} <small>${esc(u)}</small></div></div>`).join("")}</div>
@@ -182,11 +183,14 @@ function bodyPage(b, { fig, crumbs, prev, next, moonRow }) {
   mountLater(async (stale) => {
     const { mountAnatomy } = await import("./anatomy3d.js");
     if (stale()) return;
-    const stage = $(".stage"); $(".loading", stage)?.remove();
+    const stage = $(".stage");
     const fig = mountAnatomy({
       stage, svg: $("svg.callouts", stage), labelsEl: $(".labels", stage), body: b,
       onReadout: setReadout,
-      onLayer: (i) => list.querySelectorAll("li").forEach((li) => li.classList.toggle("on", +li.dataset.i === i)),
+      onLayer: (i) => {
+        list.querySelectorAll("li").forEach((li) => li.classList.toggle("on", +li.dataset.i === i));
+        document.querySelectorAll("#legend span").forEach((x) => x.classList.toggle("on", +x.dataset.i === i));
+      },
     });
     current = fig;
     const cut = $("#cut"), exp = $("#exp");
@@ -196,7 +200,8 @@ function bodyPage(b, { fig, crumbs, prev, next, moonRow }) {
     $("#whole").addEventListener("click", () => { cut.value = 0; exp.value = 0; cut.dispatchEvent(new Event("input")); exp.dispatchEvent(new Event("input")); });
     list.addEventListener("mouseover", (e) => { const li = e.target.closest("li"); if (li) fig.hover(+li.dataset.i); });
     list.addEventListener("mouseleave", () => fig.hover(-1));
-    list.addEventListener("click", (e) => { const li = e.target.closest("li"); if (li) { fig.pin(+li.dataset.i); $(".plate").scrollIntoView({ behavior: "smooth", block: "center" }); } });
+    $("#legend").addEventListener("click", (e) => { const sp = e.target.closest("span[data-i]"); if (sp) fig.pin(+sp.dataset.i); });
+    list.addEventListener("click", (e) => { const li = e.target.closest("li"); if (li) { fig.pin(+li.dataset.i); $(".plate").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" }); } });
   });
 }
 
@@ -301,7 +306,7 @@ function viewSystem(id, params) {
       <h1>Система ${gen}</h1>
       <p class="lede">${esc(sys.note)}</p>
     </div>
-    ${plate({ fig: id === "jupiter" ? "Fig 3" : "Fig 4", title: `Спутники ${gen}`, hint: "Тяни — вращать · наведи на спутник · нажми — открыть", tall: true, halo: false,
+    ${plate({ fig: id === "jupiter" ? "Fig 3" : "Fig 4", title: `Спутники ${gen}`, hint: '<span class="only-mouse">Тяни — вращать · наведи на спутник · нажми — открыть</span><span class="only-touch">Веди пальцем вбок — вращать · коснись спутника</span>', tall: true, halo: false,
       extra: `<div class="controls"><span>Время</span><div class="btn-row" id="spd">
         <button class="btn" data-s="0.25">¼ сут/с</button><button class="btn" data-s="2" aria-pressed="true">2 сут/с</button><button class="btn" data-s="30">30 сут/с</button><button class="btn" data-s="0">Пауза</button></div>
         <span>Вид</span><div class="btn-row"><button class="btn" id="zin">Внутренние</button><button class="btn" id="zout">Вся система</button></div></div>
@@ -359,7 +364,7 @@ function viewSystem(id, params) {
   mountLater(async (stale) => {
     const { mountSystem } = await import("./system3d.js");
     if (stale()) return;
-    const stage = $(".stage"); $(".loading", stage)?.remove();
+    const stage = $(".stage");
     fig = mountSystem({ stage, labelsEl: $(".labels", stage), system: sys, planet, filter, onReadout: readoutSetter(app), onPick: (mid) => (location.hash = `#/moon/${mid}`) });
     current = fig;
     $("#spd").addEventListener("click", (e) => {

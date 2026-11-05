@@ -2,20 +2,19 @@
 // Радиус орбиты сжат логарифмом (от 128 тыс. до 25 млн км), наклоны и
 // направление движения настоящие: обратные спутники летят в другую сторону.
 import * as THREE from "three";
-import { createStage, cssVar, reducedMotion } from "./gl.js";
+import { createStage, cssVar, reducedMotion, liveTexture, declutter } from "./gl.js";
 import { makeTexture, makeRingTexture, mulberry } from "./textures.js";
 import { BY_ID } from "./data/bodies.js";
 
 export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick, filter }) {
-  const S = createStage(stage, { fov: 30, far: 5000 });
+  const S = createStage(stage, { fov: 30, far: 5000, fitWidth: true });
   const { scene, camera, controls } = S;
   const aMin = system.moons[0].a, aMax = 27e6;
   const P_R = 3.0; // видимый радиус планеты
   const rOf = (a) => P_R * 1.9 + Math.log10(a / aMin) / Math.log10(aMax / aMin) * 46;
 
   // планета
-  const tex = new THREE.CanvasTexture(makeTexture(planet.look, 512, 256));
-  tex.colorSpace = THREE.SRGBColorSpace;
+  const tex = liveTexture(planet.look, 512, 256);
   const pl = new THREE.Mesh(new THREE.SphereGeometry(P_R, 64, 40), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }));
   scene.add(pl);
   if (planet.rings) {
@@ -47,7 +46,8 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
     const node = rnd() * Math.PI * 2;
     const q = orbitBasis(m.i, node);
     const pts = [];
-    for (let k = 0; k <= 200; k++) { const t = (k / 200) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(t) * r, 0, Math.sin(t) * r).applyQuaternion(q)); }
+    const seg = S.mobile ? 120 : 200;
+    for (let k = 0; k <= seg; k++) { const t = (k / seg) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(t) * r, 0, Math.sin(t) * r).applyQuaternion(q)); }
     const col = groupColor(m.group);
     const lm = new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: system.groups[m.group].kind === "irregular" ? 0.16 : 0.6 });
     const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lm);
@@ -56,11 +56,10 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
     const detail = BY_ID[m.id];
     let mat;
     if (detail && !detail.shape) {
-      const t = new THREE.CanvasTexture(makeTexture(detail.look, 256, 128));
-      t.colorSpace = THREE.SRGBColorSpace;
+      const t = liveTexture(detail.look, 256, 128, { mobileScale: 1 });
       mat = new THREE.MeshStandardMaterial({ map: t, roughness: 0.85 });
     } else mat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.6, emissive: col, emissiveIntensity: 0.25 });
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 20, 14), mat);
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, S.mobile ? 12 : 20, S.mobile ? 8 : 14), mat);
     scene.add(mesh);
     const it = { m, r, q, line, lm, mesh, size, phase: rnd() * Math.PI * 2, baseOp: lm.opacity };
     items.push(it);
@@ -100,7 +99,7 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
   });
 
   // камера
-  const D = 200, EL = THREE.MathUtils.degToRad(34), AZ = THREE.MathUtils.degToRad(25);
+  const D = S.mobile ? 150 : 200, EL = THREE.MathUtils.degToRad(S.mobile ? 50 : 34), AZ = THREE.MathUtils.degToRad(25);
   camera.position.set(Math.sin(AZ) * Math.cos(EL) * D, Math.sin(EL) * D, Math.cos(AZ) * Math.cos(EL) * D);
   controls.minDistance = 12; controls.maxDistance = 320;
 
@@ -134,7 +133,7 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
   function pick(e) {
     const rc = S.renderer.domElement.getBoundingClientRect();
     const x = e.clientX - rc.left, y = e.clientY - rc.top;
-    let best = null, bd = 16;
+    let best = null, bd = e.pointerType === "touch" ? 28 : 16;
     const v = new THREE.Vector3();
     for (const it of items) {
       if (!visibleBy(it)) continue;
@@ -146,7 +145,7 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
     return best;
   }
   let downAt = null;
-  S.renderer.domElement.addEventListener("pointermove", (e) => { const it = pick(e); if (it !== state.hover) setHover(it); S.renderer.domElement.style.cursor = it ? "pointer" : ""; });
+  S.renderer.domElement.addEventListener("pointermove", (e) => { if (e.pointerType === "touch") return; const it = pick(e); if (it !== state.hover) setHover(it); S.renderer.domElement.style.cursor = it ? "pointer" : ""; });
   S.renderer.domElement.addEventListener("pointerdown", (e) => { downAt = [e.clientX, e.clientY]; });
   S.renderer.domElement.addEventListener("pointerup", (e) => {
     if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return;
@@ -158,6 +157,7 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
     const rm = reducedMotion();
     if (!rm) state.days += dt * state.speed;
     pl.rotation.y += dt * 0.15;
+    const labels = [];
     for (const it of items) {
       const ang = it.phase + (state.days / Math.abs(it.m.p)) * Math.PI * 2; // наклон >90° сам разворачивает движение
       tmp.set(Math.cos(ang) * it.r, 0, -Math.sin(ang) * it.r).applyQuaternion(it.q);
@@ -166,8 +166,10 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
         v.copy(tmp); v.y += it.size + 0.2;
         const p = S.project(v);
         it.tag.style.left = p.x + "px"; it.tag.style.top = p.y + "px";
+        labels.push({ el: it.tag, x: p.x, y: p.y, prio: it === state.hover ? 1e9 : it.m.r, hidden: it.tag.style.display === "none" });
       }
     }
+    declutter(labels, S.width);
     for (const c of clouds) {
       for (let k = 0; k < c.data.length; k++) {
         const d = c.data[k];
@@ -190,7 +192,7 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
     setSpeed(x) { state.speed = x; },
     setFilter(g) { state.filter = g; applyFilter(); },
     zoom(kind) {
-      const d = kind === "inner" ? 42 : 200;
+      const d = kind === "inner" ? 42 : (S.mobile ? 150 : 200);
       const dir = camera.position.clone().normalize();
       camera.position.copy(dir.multiplyScalar(d));
       S.touch();
