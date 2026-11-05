@@ -1,6 +1,6 @@
 // Миниатюры тел без WebGL: шар (или «картофелина»), освещённый сверху слева,
 // рисуется попиксельно из той же процедурной текстуры.
-import { makeTextureAsync } from "./textures.js";
+import { makeTextureAsync, makeRingTexture } from "./textures.js";
 import { shapeFn } from "./anatomy3d.js";
 
 const texData = new Map();
@@ -26,16 +26,20 @@ export async function drawThumb(canvas, body, { size = 120, rot = 0.6 } = {}) {
   const img = ctx.createImageData(S, S);
   const sf = body.shape ? shapeFn(body.shape) : null;
   const ringed = body.rings;
-  const R = ringed ? S * 0.27 : S * 0.46;
+  // с кольцами планета меньше, чтобы кольца целиком помещались в кадр
+  const R = ringed === "saturn" ? S * 0.185 : ringed ? S * 0.215 : S * 0.46;
+  const ring = ringed ? ringProfile(ringed) : null;
   const cx = S / 2, cy = S / 2;
   const L = norm([-0.55, 0.6, 0.6]);
   const emissive = !!body.emissive;
   // наклон камеры для колец
-  const tilt = ringed ? 0.42 : 0.12;
+  const tilt = ringed ? 0.5 : 0.12;
   const ct = Math.cos(tilt), st = Math.sin(tilt);
+  const roll = ringed ? -0.32 : 0, cr = Math.cos(roll), sr = Math.sin(roll); // лёгкий наклон колец в кадре
   for (let py = 0; py < S; py++) {
     for (let px = 0; px < S; px++) {
-      let x = (px + 0.5 - cx) / R, y = -(py + 0.5 - cy) / R;
+      const sx0 = (px + 0.5 - cx) / R, sy0 = -(py + 0.5 - cy) / R;
+      const x = sx0 * cr - sy0 * sr, y = sx0 * sr + sy0 * cr;
       const k = (py * S + px) * 4;
       let col = null;
       const rr = x * x + y * y;
@@ -65,24 +69,20 @@ export async function drawThumb(canvas, body, { size = 120, rot = 0.6 } = {}) {
         col = [T.d[ti] * lum, T.d[ti + 1] * lum, T.d[ti + 2] * lum];
         if (emissive) { const limb = Math.pow(n0[2], 0.4); col = col.map((c) => c * (0.6 + 0.4 * limb)); }
       }
-      // кольца в плоскости экватора
-      if (ringed) {
-        // точка на плоскости кольца вдоль луча: плоскость y' = 0 в системе тела
-        // луч (x, y, z) с z свободным: y*ct - z*st ... решаем для z
-        const zr = (y * ct) / st; // где луч пересекает плоскость
-        const bx = x, bz = y * st + zr * ct;
-        const r = Math.hypot(bx, bz);
-        const inner = ringed === "saturn" ? 1.15 : 1.64, outer = ringed === "saturn" ? 2.42 : 2.06;
-        if (r > inner && r < outer) {
-          const front = zr > (hit ? hit[2] : -99);
-          const t = (r - inner) / (outer - inner);
-          let a = ringed === "saturn" ? (t < 0.23 ? 0.25 : t < 0.58 ? 0.9 : t < 0.62 ? 0.08 : 0.65) : (Math.abs(t - 0.85) < 0.05 ? 0.7 : 0.15);
-          const rc = ringed === "saturn" ? [224, 206, 170] : [180, 196, 200];
-          const shadow = !front && hit ? 0 : 1;
-          if (front || !hit) {
-            const base = col || null;
-            col = base ? base.map((c, i) => c * (1 - a) + rc[i] * a * shadow) : rc;
-            if (!base) { img.data[k] = rc[0]; img.data[k + 1] = rc[1]; img.data[k + 2] = rc[2]; img.data[k + 3] = a * 255; continue; }
+      // кольца в плоскости экватора: где луч взгляда пересекает плоскость колец
+      if (ring) {
+        const zr = (y * ct) / st;           // глубина точки кольца на луче
+        const r = Math.hypot(x, y / st);    // её расстояние от центра планеты (в радиусах)
+        if (r > ring.inner && r < ring.outer) {
+          const [rc0, rc1, rc2, a] = ring.at((r - ring.inner) / (ring.outer - ring.inner));
+          const front = !hit || zr > hit[2];
+          // тень планеты на кольце: луч от точки кольца к свету упирается в шар
+          const b = x * L[0] + y * L[1] + zr * L[2], c = x * x + y * y + zr * zr - 1;
+          const inShadow = b < 0 && b * b - c > 0;
+          const lum = inShadow ? 0.35 : 1;
+          if (front && a > 0.01) {
+            if (col) col = [col[0] * (1 - a) + rc0 * lum * a, col[1] * (1 - a) + rc1 * lum * a, col[2] * (1 - a) + rc2 * lum * a];
+            else { img.data[k] = rc0 * lum; img.data[k + 1] = rc1 * lum; img.data[k + 2] = rc2 * lum; img.data[k + 3] = a * 255; continue; }
           }
         }
       }
@@ -125,4 +125,18 @@ const lazy = new IntersectionObserver((entries) => {
 export function lazyThumb(canvas, body, opts) {
   canvas.__draw = () => drawThumb(canvas, body, opts);
   lazy.observe(canvas);
+}
+
+/** Профиль колец (цвет и прозрачность по радиусу) из той же текстуры, что в 3D. */
+const ringCache = {};
+function ringProfile(kind) {
+  if (ringCache[kind]) return ringCache[kind];
+  const cv = makeRingTexture(kind);
+  const d = cv.getContext("2d").getImageData(0, 1, cv.width, 1).data;
+  const n = cv.width;
+  return (ringCache[kind] = {
+    inner: kind === "saturn" ? 67000 / 58232 : 1.64,
+    outer: kind === "saturn" ? 141000 / 58232 : 2.06,
+    at(t) { const i = Math.min(n - 1, Math.max(0, Math.round(t * (n - 1)))) * 4; return [d[i], d[i + 1], d[i + 2], d[i + 3] / 255]; },
+  });
 }
