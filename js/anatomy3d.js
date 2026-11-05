@@ -1,7 +1,7 @@
 // «Анатомический» 3D-разрез тела: вложенные оболочки-слои, вырезанный клин,
 // ступенчатая «разборка» и выноски с подписями, как в фигурах Anatomy.
 import * as THREE from "three";
-import { createStage, follow, reducedMotion, cssVar, liveTexture, isMobile } from "./gl.js";
+import { createStage, follow, reducedMotion, cssVar, liveTexture, isMobile, spreadBadges } from "./gl.js";
 import { makeTexture, makeRingTexture, makeNoise, hex } from "./textures.js";
 
 const TAU = Math.PI * 2;
@@ -216,7 +216,6 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
   const WEDGE_C = AZ0 + THREE.MathUtils.degToRad(8);
 
   const state = { cut: 0, cutT: 90, explode: 0, explodeT: 0, hover: -1, pinned: -1, spin: 0 };
-  if (reducedMotion()) { state.cut = state.cutT; }
 
   function rebuild() {
     const n = layers.length;
@@ -258,6 +257,7 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
     svg.append(path, dot);
     const el = document.createElement("div");
     el.className = "callout-label";
+    el.dataset.n = String(i + 1).padStart(2, "0");
     el.innerHTML = `<span class="sw" style="background:${L.def.color}"></span><b>${String(i + 1).padStart(2, "0")} ${L.def.name}</b>`;
     el.addEventListener("pointerenter", () => setHover(i));
     el.addEventListener("pointerleave", () => setHover(-1));
@@ -269,7 +269,7 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
   const v = new THREE.Vector3(), nrm = new THREE.Vector3(), camDir = new THREE.Vector3();
   function layoutCallouts() {
     const W = S.width, H = S.height;
-    if (W < 560) return;
+    const compact = W < 560; // телефон: вместо колонки подписей — номера прямо на слоях
     const items = [];
     layers.forEach((L, i) => {
       if (state.cut < 8) { items.push({ i, hidden: true }); return; }
@@ -290,6 +290,21 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
       }
       items.push({ i, p: best.p, facing: best.facing });
     });
+    if (compact) {
+      const vis = items.filter((x) => !x.hidden && isFinite(x.p.x)).map((x) => ({ x: x.p.x, y: x.p.y, it: x }));
+      spreadBadges(vis);
+      vis.forEach((b) => { b.it.bx = b.x; b.it.by = b.y; });
+      items.forEach((x) => {
+        const c = callouts[x.i], on = state.hover === x.i || state.pinned === x.i;
+        c.el.classList.add("compact"); c.path.style.opacity = "0"; c.dot.style.opacity = "0";
+        if (x.hidden || !isFinite(x.p.x)) { c.el.style.opacity = "0"; return; }
+        c.el.style.opacity = x.facing > -0.05 ? 1 : 0.3;
+        c.el.style.left = x.bx + "px"; c.el.style.top = x.by + "px";
+        c.el.classList.toggle("on", on);
+      });
+      return;
+    }
+    callouts.forEach((c) => c.el.classList.remove("compact"));
     const shown = items.filter((x) => !x.hidden);
     const colX = W - 210;
     shown.sort((a, b) => b.i - a.i); // сверху — внешний слой, снизу — ядро
@@ -374,19 +389,22 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
   });
 
   // --- кадр
-  let introT = 0;
+  let t0 = -1;
   S.onFrame((dt, t, idle) => {
-    introT += dt;
+    if (t0 < 0) t0 = t;
+    const introT = t - t0; // реальное время с момента появления сцены
+    // «Уменьшение движения» на телефоне не выключает разрез и разборку —
+    // они просто идут чуть быстрее; выключаются только автоматические облёты.
     const rm = reducedMotion();
-    const cutTarget = introT < 0.6 && !rm ? 0 : state.cutT;
+    const cutTarget = introT < 0.6 ? 0 : state.cutT;
     const pc = state.cut, pe = state.explode;
-    state.cut = rm ? cutTarget : follow(state.cut, cutTarget, dt, 0.45);
-    state.explode = rm ? state.explodeT : follow(state.explode, state.explodeT, dt, 0.4);
+    state.cut = follow(state.cut, cutTarget, dt, rm ? 0.25 : 0.45);
+    state.explode = follow(state.explode, state.explodeT, dt, rm ? 0.22 : 0.4);
     if (Math.abs(pc - state.cut) > 0.02 || Math.abs(pe - state.explode) > 0.0005) { rebuild(); readout(); }
     // планета вращается «под» неподвижным клином — двигается только поверхность
+    state.spin += dt * (body.emissive ? 0.012 : 0.02) * (rm ? 0.5 : 1);
+    surfTex.offset.x = state.spin;
     if (!rm) {
-      state.spin += dt * (body.emissive ? 0.012 : 0.02);
-      surfTex.offset.x = state.spin;
       // спокойный тур, когда никто не трогает
       if (idle > 6) {
         const sway = Math.sin(t * 0.18) * 0.18;

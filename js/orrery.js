@@ -133,7 +133,7 @@ export function mountOrrery({ stage, labelsEl, planets, sun, onReadout, onPick }
   const v = new THREE.Vector3();
   S.onFrame((dt, t, idle) => {
     const rm = reducedMotion();
-    if (!rm) state.days += dt * state.speed;
+    state.days += dt * state.speed; // остановить можно кнопкой «Пауза»
     for (const it of items) {
       if (!it.holder) continue;
       const ang = it.phase + (state.days / it.period) * Math.PI * 2;
@@ -141,7 +141,7 @@ export function mountOrrery({ stage, labelsEl, planets, sun, onReadout, onPick }
       it.mesh.rotation.y += dt * 0.6;
     }
     sunMesh.rotation.y += dt * 0.05;
-    if (items.belt && !rm) items.belt.rotation.y += dt * state.speed * items.belt.userData.spin * 0.3;
+    if (items.belt) items.belt.rotation.y += dt * state.speed * items.belt.userData.spin * 0.3;
     if (idle > 6 && !rm) {
       // медленный облёт
       const a = Math.atan2(camera.position.x, camera.position.z) + dt * 0.03;

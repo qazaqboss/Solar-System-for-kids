@@ -128,7 +128,7 @@ export function createStage(stage, { fov = 30, near = 0.01, far = 2000, controls
     if (!running || !visible || document.hidden) return;
     raf = requestAnimationFrame(loop);
     const now = performance.now();
-    const dt = Math.min(0.05, (now - last) / 1000);
+    const dt = Math.min(0.1, (now - last) / 1000); // до 0,1 с: на медленном телефоне анимация не «тормозит»
     last = now;
     const idle = (now - lastInteract) / 1000;
     adapt(now);
@@ -201,4 +201,20 @@ export function declutter(items, W = Infinity) {
     it.el.classList.toggle("hidden", hit);
     if (!hit) placed.push(r);
   }
+}
+
+/** Раздвинуть круглые метки, чтобы не налезали друг на друга (items: [{x, y}]). */
+export function spreadBadges(items, minD = 25, iters = 6) {
+  for (let k = 0; k < iters; k++) {
+    for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+      const a = items[i], b = items[j];
+      let dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+      if (d >= minD) continue;
+      if (d < 0.01) { dx = 1; dy = 0.3; d = 1.04; }
+      const push = (minD - d) / 2;
+      a.x -= (dx / d) * push; a.y -= (dy / d) * push;
+      b.x += (dx / d) * push; b.y += (dy / d) * push;
+    }
+  }
+  return items;
 }

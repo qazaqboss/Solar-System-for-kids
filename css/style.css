@@ -329,7 +329,9 @@ footer a { color: var(--text); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  /* «Уменьшение движения»: убираем въезды и долгие переходы, но интерфейс остаётся живым */
+  .view { animation: none; }
+  *, *::before, *::after { transition-duration: .15s !important; }
 }
 
 /* ======================================================================
@@ -405,3 +407,19 @@ button, .btn, .chip, a, input[type="range"] { touch-action: manipulation; }
 .plate.space .callout-label { background: rgba(4, 6, 11, .72); padding: 3px 7px 3px 5px; margin-top: -3px; border-radius: 2px; }
 .plate.space .callouts path { stroke: #8b93a3; }
 .plate.space .plate-corner { text-shadow: 0 1px 2px #000; }
+
+/* Телефон: номера слоёв и деталей прямо на 3D-модели (вместо колонки выносок) */
+.callout-label.compact {
+  display: grid !important; place-items: center;
+  width: 22px; height: 22px; margin: -11px 0 0 -11px; padding: 0 !important;
+  border-radius: 50%; background: var(--card); color: var(--strong);
+  box-shadow: 0 0 0 1px var(--strong), 0 2px 6px rgba(0,0,0,.25);
+  font: 600 10px/1 var(--mono); transition: transform .2s var(--ease), opacity .3s;
+}
+.callout-label.compact > * { display: none; }
+.callout-label.compact::after { content: attr(data-n); }
+.callout-label.compact.on { background: var(--strong); color: var(--card); transform: scale(1.18); }
+.callout-label.compact.dim { opacity: .5 !important; }
+@media (max-width: 640px) { .labels .callout-label.compact { display: grid !important; } }
+.plate.space .callout-label.compact { border-radius: 50%; padding: 0; margin: -11px 0 0 -11px; background: rgba(4, 6, 11, .85); color: #eef1f6; box-shadow: 0 0 0 1px #eef1f6; }
+.plate.space .callout-label.compact.on { background: #eef1f6; color: #04060b; }

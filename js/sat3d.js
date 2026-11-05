@@ -4,7 +4,7 @@
 // солнечные элементы с шинами, рёбра радиаторов, решётчатые фермы.
 // Два режима: «Космос» (чёрное небо, Земля, солнечный свет) и «Чертёж».
 import * as THREE from "three";
-import { createStage, follow, reducedMotion, liveTexture } from "./gl.js";
+import { createStage, follow, reducedMotion, liveTexture, spreadBadges } from "./gl.js";
 import { RoomEnvironment } from "./vendor/RoomEnvironment.js";
 import { RoundedBoxGeometry } from "./vendor/RoundedBoxGeometry.js";
 import { mulberry } from "./textures.js";
@@ -431,7 +431,7 @@ export function mountSat({ stage, svg, labelsEl, sat, onReadout, onPart, space =
   const callouts = parts.map((p, i) => {
     const path = document.createElementNS(NS, "path"), dot = document.createElementNS(NS, "circle");
     dot.setAttribute("r", "2.6"); svg.append(path, dot);
-    const el = document.createElement("div"); el.className = "callout-label";
+    const el = document.createElement("div"); el.className = "callout-label"; el.dataset.n = String(i + 1).padStart(2, "0");
     el.innerHTML = `<b>${String(i + 1).padStart(2, "0")} ${p.name}</b>`;
     el.addEventListener("pointerenter", () => setHover(i)); el.addEventListener("pointerleave", () => setHover(-1));
     el.addEventListener("click", () => setPinned(state.pinned === i ? -1 : i));
@@ -442,13 +442,26 @@ export function mountSat({ stage, svg, labelsEl, sat, onReadout, onPart, space =
   const anchors = parts.map(() => new THREE.Vector3());
   function layout() {
     const W = S.width, H = S.height;
-    if (W < 560) return;
+    const compact = W < 560; // телефон: номера деталей прямо на модели
     const items = parts.map((p, i) => {
-      tmpBox.makeEmpty(); p.objs.forEach((o) => tmpBox.expandByObject(o));
+      // якорь — центр первого куска детали (у симметричных крыльев общий центр попал бы на корпус)
+      tmpBox.makeEmpty(); tmpBox.expandByObject(p.objs[0]);
       tmpBox.getCenter(anchors[i]);
       return { i, p: S.project(anchors[i]) };
     });
     if (items.some((x) => !isFinite(x.p.x) || !isFinite(x.p.y))) return; // первый кадр: камера ещё не обновлена
+    if (compact) {
+      const bs = spreadBadges(items.map((x) => ({ x: x.p.x, y: x.p.y, it: x })));
+      bs.forEach((b) => { b.it.bx = b.x; b.it.by = b.y; });
+      items.forEach((x) => {
+        const c = callouts[x.i], on = state.hover === x.i || state.pinned === x.i;
+        c.el.classList.add("compact"); c.path.style.opacity = "0"; c.dot.style.opacity = "0";
+        c.el.style.left = x.bx + "px"; c.el.style.top = x.by + "px";
+        c.el.classList.toggle("on", on);
+      });
+      return;
+    }
+    callouts.forEach((c) => { c.el.classList.remove("compact"); c.path.style.opacity = ""; c.dot.style.opacity = ""; });
     const colX = W - 220, gap = 30, total = (items.length - 1) * gap;
     items.sort((a, b) => a.p.y - b.p.y);
     const y0 = Math.max(52, Math.min(H - 52 - total, H / 2 - total / 2));
@@ -496,21 +509,20 @@ export function mountSat({ stage, svg, labelsEl, sat, onReadout, onPart, space =
     const i = pickPart(e); setPinned(i === state.pinned ? -1 : i);
   });
 
-  let intro = 0;
+  let t0 = -1;
   S.onFrame((dt, t, idle) => {
     const rm = reducedMotion();
-    intro += dt;
-    const target = !rm && intro < 1.2 ? 0 : state.exT;
+    if (t0 < 0) t0 = t;
+    const intro = t - t0; // реальное время, а не число кадров — на медленном телефоне не «застревает»
+    const target = intro < 1.2 ? 0 : state.exT;
     const prev = state.ex;
-    state.ex = rm ? target : follow(state.ex, target, dt, 0.35);
+    state.ex = follow(state.ex, target, dt, rm ? 0.22 : 0.35);
     if (Math.abs(prev - state.ex) > 1e-4 || intro < 0.1) {
       parts.forEach((p) => p.objs.forEach((o) => o.position.copy(o.userData.home).addScaledVector(o.userData.dirV, state.ex * spread)));
       readout();
     }
-    if (!rm) {
-      earth.userData.earth.rotation.y += dt * 0.004; // Земля медленно поворачивается под аппаратом
-      if (idle > 4) root.rotation.y += dt * 0.1;
-    }
+    earth.userData.earth.rotation.y += dt * 0.004; // Земля медленно поворачивается под аппаратом
+    if (!rm && idle > 4) root.rotation.y += dt * 0.1;
     layout();
   });
   S.start(); readout();

@@ -169,7 +169,7 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
   const tmp = new THREE.Vector3(), v = new THREE.Vector3();
   S.onFrame((dt, t, idle) => {
     const rm = reducedMotion();
-    if (!rm) state.days += dt * state.speed;
+    state.days += dt * state.speed; // остановить можно кнопкой «Пауза»
     pl.rotation.y += dt * 0.15;
     const labels = [];
     for (const it of items) {
