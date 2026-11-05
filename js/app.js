@@ -436,8 +436,9 @@ function viewSat(id) {
       extra: `<div class="controls">
         <label class="ctl">Разобрать <input type="range" id="exp" min="0" max="100" value="30"><output id="expv">30%</output></label>
         <div class="btn-row"><button class="btn" id="apart">Разобрать на детали</button><button class="btn" id="whole">Собрать</button></div>
+        <span>Вид</span><div class="btn-row" id="look"><button class="btn" data-v="space">Космос</button><button class="btn" data-v="plan">Чертёж</button></div>
       </div><div class="legend" id="legend"></div>
-      <p class="caption"><b>Как читать.</b> Модель упрощённая: показаны главные узлы аппарата и то, как они устроены. Размеры деталей приведены к удобному для глаза масштабу.</p>` })}
+      <p class="caption"><b>Как читать.</b> Модель упрощённая: показаны главные узлы аппарата и из чего они сделаны — золотая и серебристая теплоизоляция, солнечные элементы, радиаторы. Пропорции приближены к настоящим, мелкие детали опущены. В режиме «Космос» аппарат освещён Солнцем на фоне звёзд и Земли.</p>` })}
     <div class="stats">${stats.map(([k, v, u]) => `<div class="stat"><div class="k">${esc(k)}</div><div class="v" style="${String(v).length > 14 ? "font-size:13.5px" : ""}">${esc(v)} <small>${esc(u)}</small></div></div>`).join("")}</div>
     <div class="two-col">
       <div><h2>Из чего состоит</h2><ol class="layers-list" id="layers"></ol></div>
@@ -453,8 +454,9 @@ function viewSat(id) {
     const { mountSat } = await import("./sat3d.js");
     if (stale()) return;
     const stage = $(".stage"), list2 = $("#layers"), legend = $("#legend");
+    let look = "space"; try { look = localStorage.getItem("satLook") || "space"; } catch {}
     const fig = mountSat({
-      stage, svg: $("svg.callouts", stage), labelsEl: $(".labels", stage), sat: m, onReadout: readoutSetter(app),
+      stage, svg: $("svg.callouts", stage), labelsEl: $(".labels", stage), sat: m, onReadout: readoutSetter(app), space: look === "space",
       onPart: (k) => { list2.querySelectorAll("li").forEach((li) => li.classList.toggle("on", +li.dataset.i === k)); legend.querySelectorAll("span").forEach((x) => x.classList.toggle("on", +x.dataset.i === k)); },
     });
     current = fig;
@@ -462,6 +464,10 @@ function viewSat(id) {
     list2.innerHTML = fig.parts.map((p, k) => `<li data-i="${k}"><span class="n">${String(k + 1).padStart(2, "0")}</span><span class="sw" style="background:${COLORS[k % COLORS.length]}"></span><div><b>${esc(p.name)}</b><p>${esc(p.desc)}</p></div></li>`).join("");
     legend.innerHTML = fig.parts.map((p, k) => `<span data-i="${k}"><i style="background:${COLORS[k % COLORS.length]}"></i>${String(k + 1).padStart(2, "0")} ${esc(p.name)}</span>`).join("");
     const exp = $("#exp");
+    const lookBtns = $("#look").querySelectorAll("button");
+    const setLook = (v) => { lookBtns.forEach((b) => b.setAttribute("aria-pressed", b.dataset.v === v)); fig.setSpace(v === "space"); try { localStorage.setItem("satLook", v); } catch {} };
+    setLook(look);
+    $("#look").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setLook(b.dataset.v); });
     exp.addEventListener("input", () => { fig.setExplode(+exp.value / 100); $("#expv").textContent = exp.value + "%"; });
     $("#apart").addEventListener("click", () => { exp.value = 100; exp.dispatchEvent(new Event("input")); });
     $("#whole").addEventListener("click", () => { exp.value = 0; exp.dispatchEvent(new Event("input")); });

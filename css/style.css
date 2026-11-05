@@ -393,3 +393,15 @@ button, .btn, .chip, a, input[type="range"] { touch-action: manipulation; }
 .stage canvas.gl { opacity: 0; transition: opacity .6s var(--ease); }
 .stage.live canvas.gl { opacity: 1; }
 .stage.live .loading { opacity: 0; pointer-events: none; transition: opacity .4s; }
+
+/* Режим «Космос» у моделей спутников: тёмная рамка и светлые подписи */
+.plate.space {
+  --card: #04060b; --strong: #eef1f6; --text: #b9bfca; --muted: #7b8392; --mid: #4a505c; --lo: #3a404c; --faint: #232833;
+  background: #04060b; box-shadow: 0 0 0 1px #2a2f3a;
+}
+.plate.space .halo { display: none; }
+.plate.space .callouts circle { fill: #04060b; }
+.plate.space .callout-label { text-shadow: 0 1px 2px #000; }
+.plate.space .callout-label { background: rgba(4, 6, 11, .72); padding: 3px 7px 3px 5px; margin-top: -3px; border-radius: 2px; }
+.plate.space .callouts path { stroke: #8b93a3; }
+.plate.space .plate-corner { text-shadow: 0 1px 2px #000; }
