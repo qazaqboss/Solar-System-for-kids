@@ -9,9 +9,13 @@ import { BY_ID } from "./data/bodies.js";
 export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick, filter }) {
   const S = createStage(stage, { fov: 30, far: 5000, fitWidth: true });
   const { scene, camera, controls } = S;
-  const aMin = system.moons[0].a, aMax = 27e6;
+  const live = system.moons.filter((m) => !m.gone); // сгоревшие спутники только в каталоге
+  const aMin = Math.min(...live.map((m) => m.a)), aMax = system.aMax ?? 27e6;
   const P_R = 3.0; // видимый радиус планеты
-  const rOf = (a) => P_R * 1.9 + Math.log10(a / aMin) / Math.log10(aMax / aMin) * 46;
+  const inner = system.inner ?? 1.9;
+  const rOf = (a) => P_R * inner + Math.log10(a / aMin) / Math.log10(aMax / aMin) * 46;
+  const GM = system.gm ?? (system.id === "jupiter" ? 1.26687e17 : 3.7931e16);
+  const isEarth = system.id === "earth";
 
   // планета
   const tex = liveTexture(planet.look, 512, 256);
@@ -34,14 +38,14 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
 
   const groupColor = (g) => new THREE.Color(system.groups[g].color);
   const items = [];
-  const rnd = mulberry(system.id === "jupiter" ? 5 : 9);
+  const rnd = mulberry(system.id === "jupiter" ? 5 : system.id === "earth" ? 13 : 9);
 
   function orbitBasis(incDeg, node) {
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(Math.cos(node), 0, Math.sin(node)), THREE.MathUtils.degToRad(incDeg));
     return q;
   }
 
-  system.moons.forEach((m) => {
+  live.forEach((m) => {
     const r = rOf(m.a);
     const node = rnd() * Math.PI * 2;
     const q = orbitBasis(m.i, node);
@@ -51,22 +55,23 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
     const col = groupColor(m.group);
     const lm = new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: system.groups[m.group].kind === "irregular" ? 0.16 : 0.6 });
     const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lm);
-    scene.add(line);
-    const size = Math.max(0.2, 0.1 + Math.log10(Math.max(0.3, m.r)) * 0.42);
+    if (!m.lag) scene.add(line); // у точек Лагранжа нет круговой орбиты вокруг Земли
+    const size = isEarth ? (m.id === "moon" ? 1.1 : 0.34) : Math.max(0.2, 0.1 + Math.log10(Math.max(0.3, m.r)) * 0.42);
     const detail = BY_ID[m.id];
     let mat;
     if (detail && !detail.shape) {
       const t = liveTexture(detail.look, 256, 128, { mobileScale: 1 });
       mat = new THREE.MeshStandardMaterial({ map: t, roughness: 0.85 });
     } else mat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.6, emissive: col, emissiveIntensity: 0.25 });
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, S.mobile ? 12 : 20, S.mobile ? 8 : 14), mat);
+    const geo = isEarth && m.id !== "moon" ? new THREE.OctahedronGeometry(size, 0) : new THREE.SphereGeometry(size, S.mobile ? 12 : 20, S.mobile ? 8 : 14);
+    const mesh = new THREE.Mesh(geo, mat);
     scene.add(mesh);
     const it = { m, r, q, line, lm, mesh, size, phase: rnd() * Math.PI * 2, baseOp: lm.opacity };
     items.push(it);
-    if (system.groups[m.group].kind === "major" || ["phoebe", "himalia", "amalthea"].includes(m.id)) {
+    if (m.tag || system.groups[m.group].kind === "major" || ["phoebe", "himalia", "amalthea"].includes(m.id)) {
       const tag = document.createElement("a");
-      tag.className = "tag" + (m.r < 400 ? " small" : "");
-      tag.href = `#/moon/${m.id}`; tag.textContent = m.name;
+      tag.className = "tag" + (!isEarth && m.r < 400 ? " small" : "");
+      tag.href = isEarth && m.id !== "moon" ? `#/sat/${m.id}` : `#/moon/${m.id}`; tag.textContent = m.name;
       tag.addEventListener("pointerenter", () => setHover(it));
       tag.addEventListener("pointerleave", () => setHover(null));
       labelsEl.append(tag);
@@ -77,33 +82,42 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
   // безымянные спутники — облако точек по группам
   const unnamed = system.total - system.named;
   const clouds = [];
-  const irr = Object.entries(system.groups).filter(([, g]) => g.share);
+  const irr = Object.entries(system.groups).filter(([, g]) => g.share || g.cloud);
   const shareSum = irr.reduce((s, [, g]) => s + g.share, 0);
   let left = unnamed;
   irr.forEach(([key, g], gi) => {
-    const n = gi === irr.length - 1 ? left : Math.round((unnamed * g.share) / shareSum);
-    left -= n;
+    let n;
+    if (g.cloud) n = S.mobile ? Math.round(g.cloud * 0.5) : g.cloud; // группировки Земли: заданное число точек
+    else { n = gi === irr.length - 1 ? left : Math.round((unnamed * g.share) / shareSum); left -= n; }
     const pos = new Float32Array(n * 3);
     const data = [];
     for (let k = 0; k < n; k++) {
       const a = g.a[0] + rnd() * (g.a[1] - g.a[0]);
-      const inc = g.inc[0] + rnd() * (g.inc[1] - g.inc[0]);
+      const inc = g.incs ? g.incs[Math.floor(rnd() * g.incs.length)] + (rnd() - 0.5) * 0.6 : g.inc[0] + rnd() * (g.inc[1] - g.inc[0]);
       const q = orbitBasis(inc, rnd() * Math.PI * 2);
-      const period = 2 * Math.PI * Math.sqrt(Math.pow(a * 1000, 3) / (system.id === "jupiter" ? 1.26687e17 : 3.7931e16)) / 86400;
+      const period = 2 * Math.PI * Math.sqrt(Math.pow(a * 1000, 3) / GM) / 86400;
       data.push({ r: rOf(a), q, phase: rnd() * Math.PI * 2, period });
     }
     const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: new THREE.Color(g.color), size: 0.3, transparent: true, opacity: 0.75 }));
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: new THREE.Color(g.color), size: isEarth ? 0.22 : 0.3, transparent: true, opacity: 0.75 }));
     scene.add(pts);
     clouds.push({ key, pts, data, pos });
   });
 
   // камера
-  const D = S.mobile ? 150 : 200, EL = THREE.MathUtils.degToRad(S.mobile ? 50 : 34), AZ = THREE.MathUtils.degToRad(25);
+  const D = (system.camD ?? 1) * (S.mobile ? 150 : 200), EL = THREE.MathUtils.degToRad(S.mobile ? 50 : 34), AZ = THREE.MathUtils.degToRad(25);
   camera.position.set(Math.sin(AZ) * Math.cos(EL) * D, Math.sin(EL) * D, Math.cos(AZ) * Math.cos(EL) * D);
   controls.minDistance = 12; controls.maxDistance = 320;
 
-  const state = { days: 0, speed: 2, filter: filter || null, hover: null };
+  const state = { days: 0, speed: system.speed ?? 2, filter: filter || null, hover: null };
+  const speedLabel = () => (system.speeds?.find(([v]) => v === state.speed)?.[1]) ?? `×${state.speed} сут/с`;
+  // время: минуты, часы или сутки — что удобнее читать
+  const fmtT = (d) => {
+    d = Math.abs(d);
+    if (d < 2 / 24) return `${Math.round(d * 1440).toLocaleString("ru-RU")} мин`;
+    if (d < 2) return `${(d * 24).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} ч`;
+    return `${d.toLocaleString("ru-RU", { maximumFractionDigits: d < 100 ? 2 : 0 })} сут`;
+  };
   function setHover(it) {
     state.hover = it;
     items.forEach((x) => { x.lm.opacity = x === it ? 1 : visibleBy(x) ? x.baseOp : 0.04; x.tag?.classList.toggle("on", x === it); });
@@ -124,8 +138,8 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
   function readout() {
     const it = state.hover;
     const txt = it
-      ? `${it.m.name} · ${fmtA(it.m.a)} · ${Math.abs(it.m.p).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} сут${it.m.retro ? " · обратный" : ""}`
-      : `прошло ${Math.round(state.days).toLocaleString("ru-RU")} сут · ×${state.speed} сут/с`;
+      ? `${it.m.name} · ${isEarth && it.m.id !== "moon" ? (it.m.lag ? (it.m.lag > 0 ? "точка L2" : "точка L1") + " · 1,5 млн км" : "высота " + fmtA(it.m.a - 6371)) : fmtA(it.m.a)} · ${it.m.lag ? "оборот с Землёй за год" : "период " + fmtT(it.m.p)}${it.m.retro ? " · обратный" : ""}`
+      : `прошло ${fmtT(state.days)} · ${speedLabel()}`;
     if (txt !== lastTxt) { lastTxt = txt; onReadout?.(txt); }
   }
 
@@ -159,14 +173,22 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
     pl.rotation.y += dt * 0.15;
     const labels = [];
     for (const it of items) {
-      const ang = it.phase + (state.days / Math.abs(it.m.p)) * Math.PI * 2; // наклон >90° сам разворачивает движение
-      tmp.set(Math.cos(ang) * it.r, 0, -Math.sin(ang) * it.r).applyQuaternion(it.q);
+      if (it.m.lag) {
+        // L1 — к Солнцу, L2 — от Солнца; направление на Солнце поворачивается за год
+        const sunAng = (state.days / 365.25) * Math.PI * 2 + (it.m.lag > 0 ? Math.PI : 0);
+        const off = 0.9 * Math.cos(it.phase), offY = 0.9 * Math.sin(it.phase); // гало-орбита вокруг точки
+        tmp.set(Math.cos(sunAng) * it.r - Math.sin(sunAng) * off, offY, -Math.sin(sunAng) * it.r - Math.cos(sunAng) * off);
+      } else {
+        const ang = it.phase + (state.days / Math.abs(it.m.p)) * Math.PI * 2; // наклон >90° сам разворачивает движение
+        tmp.set(Math.cos(ang) * it.r, 0, -Math.sin(ang) * it.r).applyQuaternion(it.q);
+      }
+      if (isEarth && it.m.id !== "moon") it.mesh.rotation.y += dt;
       it.mesh.position.copy(tmp);
       if (it.tag) {
         v.copy(tmp); v.y += it.size + 0.2;
         const p = S.project(v);
         it.tag.style.left = p.x + "px"; it.tag.style.top = p.y + "px";
-        labels.push({ el: it.tag, x: p.x, y: p.y, prio: it === state.hover ? 1e9 : it.m.r, hidden: it.tag.style.display === "none" });
+        labels.push({ el: it.tag, x: p.x, y: p.y, prio: it === state.hover ? 1e9 : isEarth ? (it.m.id === "moon" ? 1e6 : 1e3 - it.m.a / 1e4) : it.m.r, hidden: it.tag.style.display === "none" });
       }
     }
     declutter(labels, S.width);
@@ -192,7 +214,7 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
     setSpeed(x) { state.speed = x; },
     setFilter(g) { state.filter = g; applyFilter(); },
     zoom(kind) {
-      const d = kind === "inner" ? 42 : (S.mobile ? 150 : 200);
+      const d = kind === "inner" ? (isEarth ? 22 : 42) : (system.camD ?? 1) * (S.mobile ? 150 : 200);
       const dir = camera.position.clone().normalize();
       camera.position.copy(dir.multiplyScalar(d));
       S.touch();
