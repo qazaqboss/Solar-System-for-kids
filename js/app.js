@@ -20,6 +20,8 @@ const app = document.getElementById("app");
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 let current = null; // активная 3D-фигура
+// сообщить экскурсии, что 3D-фигура на странице готова
+const figReady = () => { window.__fig = current; window.dispatchEvent(new CustomEvent("fig-ready", { detail: current })); };
 const GL = hasWebGL();
 const plural = (n, one, few, many) => `${n} ${n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many}`;
 
@@ -76,6 +78,11 @@ function viewHome() {
       <div class="eyebrow">Интерактивный атлас · 3D · для детей и взрослых</div>
       <h1>Анатомия Солнечной системы</h1>
       <p class="lede">Разбери каждую планету и спутник как механизм: вырежи клин, «разбери» по слоям и узнай, из чего они сделаны. Отдельно — системы спутников всех планет, у которых они есть: Луна и искусственные спутники Земли, Фобос и Деймос, луны Юпитера, Сатурна, Урана и Нептуна — в 3D, с характеристиками и историей открытий.</p>
+      <button class="tour-cta" data-tour-start>
+        <span class="tour-cta-orb" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span><b>Экскурсия с гидом</b><small>Голосом рассказывает и сам показывает · 3,5 мин</small></span>
+        <span class="tour-cta-play" aria-hidden="true">▶</span>
+      </button>
     </div>
     ${plate({ fig: "Fig 1", title: "Солнечная система", hint: '<span class="only-mouse">Тяни — вращать · колесо — масштаб · нажми на планету</span><span class="only-touch">Веди пальцем вбок — вращать · коснись планеты</span>', tall: true, halo: false,
       extra: `<div class="controls"><span>Скорость времени</span><div class="btn-row" id="spd">
@@ -127,6 +134,7 @@ function viewHome() {
     if (stale()) return;
     const stage = $(".stage");
     current = mountOrrery({ stage, labelsEl: $(".labels", stage), planets: PLANETS, sun, onReadout: readoutSetter(app), onPick: (id) => (location.hash = `#/body/${id}`) });
+    figReady();
     $("#spd").addEventListener("click", (e) => {
       const b = e.target.closest("button"); if (!b) return;
       $("#spd").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b));
@@ -210,6 +218,7 @@ function bodyPage(b, { fig, crumbs, prev, next, moonRow }) {
       },
     });
     current = fig;
+    setTimeout(figReady, 0);
     const cut = $("#cut"), exp = $("#exp");
     cut.addEventListener("input", () => { fig.setCut(+cut.value); $("#cutv").textContent = cut.value + "°"; });
     exp.addEventListener("input", () => { fig.setExplode(+exp.value / 100); $("#expv").textContent = exp.value + "%"; });
@@ -401,6 +410,7 @@ function viewSystem(id, params) {
     const stage = $(".stage");
     fig = mountSystem({ stage, labelsEl: $(".labels", stage), system: sys, planet, filter, onReadout: readoutSetter(app), onPick: (mid) => (location.hash = satHref(sys.moons.find((x) => x.id === mid))) });
     current = fig;
+    setTimeout(figReady, 0);
     $("#spd").addEventListener("click", (e) => {
       const b = e.target.closest("button"); if (!b) return;
       $("#spd").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b));
@@ -463,6 +473,7 @@ function viewSat(id) {
       onPart: (k) => { list2.querySelectorAll("li").forEach((li) => li.classList.toggle("on", +li.dataset.i === k)); legend.querySelectorAll("span").forEach((x) => x.classList.toggle("on", +x.dataset.i === k)); },
     });
     current = fig;
+    setTimeout(figReady, 0);
     const COLORS = ["#c8ccd2", "#d6a640", "#2a3f86", "#eeeeea", "#3a3c42", "#c4492a", "#f2c14e"];
     list2.innerHTML = fig.parts.map((p, k) => `<li data-i="${k}"><span class="n">${String(k + 1).padStart(2, "0")}</span><span class="sw" style="background:${COLORS[k % COLORS.length]}"></span><div><b>${esc(p.name)}</b><p>${esc(p.desc)}</p></div></li>`).join("");
     legend.innerHTML = fig.parts.map((p, k) => `<span data-i="${k}"><i style="background:${COLORS[k % COLORS.length]}"></i>${String(k + 1).padStart(2, "0")} ${esc(p.name)}</span>`).join("");
@@ -503,6 +514,7 @@ function viewNotFound() {
 function route(keepScroll = false) {
   routeSeq++;
   if (current) { current.dispose(); current = null; }
+  window.__fig = null;
   const h = location.hash.replace(/^#\/?/, "");
   const [path, qs] = h.split("?");
   const parts = path.split("/").filter(Boolean);
