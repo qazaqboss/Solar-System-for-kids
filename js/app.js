@@ -13,6 +13,7 @@ const fmtAlt = (m) => m.lag ? `1,5 млн км (${m.lag > 0 ? "L2" : "L1"})` : m
 const SAT_ICON = `<svg viewBox="0 0 26 26" width="26" height="26" aria-hidden="true"><rect x="10" y="9" width="6" height="8" fill="var(--card)" stroke="var(--strong)"/><rect x="1" y="11" width="8" height="4" fill="var(--blue)" opacity=".7"/><rect x="17" y="11" width="8" height="4" fill="var(--blue)" opacity=".7"/><path d="M13 9V5m-2 0h4" stroke="var(--strong)" fill="none"/></svg>`;
 import { profileFor } from "./data/generic.js";
 import { HISTORY } from "./data/history.js";
+import { TOPICS, TOPIC, GROUPS, GLOSSARY, PHOTOS, CBODIES, COSMIC_TIMELINE } from "./data/universe.js";
 import { drawThumb, lazyThumb } from "./thumb.js";
 import { hasWebGL } from "./gl.js";
 
@@ -97,6 +98,12 @@ function viewHome() {
     <p class="section-note">У Меркурия и Венеры спутников нет. У остальных планет — свои системы: у Земли Луна и тысячи искусственных спутников, у Марса ${SYSTEMS.mars.total}, у Юпитера ${SYSTEMS.jupiter.total}, у Сатурна ${SYSTEMS.saturn.total}, у Урана ${SYSTEMS.uranus.total}, у Нептуна ${SYSTEMS.neptune.total}. Каждый спутник с именем разобран отдельно.</p>
     <div class="grid" id="systems"></div>
 
+    <a class="u-promo" href="#/universe" style="background-image:url('img/webb/weic2216b.jpg')">
+      <span class="eyebrow">Новый раздел · полный гид</span>
+      <b>Вселенная</b>
+      <span>Большой взрыв, галактики, рождение и смерть звёзд, нейтронные звёзды, чёрные дыры, экзопланеты — 3D-модели к каждой теме и снимки «Джеймса Уэбба»</span>
+      <i>Открыть →</i>
+    </a>
     <h2>Как читать фигуры</h2>
     <div class="facts">
       <div class="fact"><span class="eyebrow">01 · Разрез</span>Ползунок «Разрез» вырезает клин, чтобы заглянуть внутрь. Слои показаны в порядке от центра.</div>
@@ -492,6 +499,188 @@ function viewSat(id) {
   });
 }
 
+
+// ============================================================ ВСЕЛЕННАЯ
+const photoSrc = (id, small) => `img/webb/${id}${small ? "-s" : ""}.jpg`;
+const KIND_RU = { photo: "Снимок", spectrum: "Спектр", art: "Рисунок художника" };
+function photoCard(id) {
+  const p = PHOTOS[id]; if (!p) return "";
+  return `<button class="ph" data-photo="${id}"><img loading="lazy" src="${photoSrc(id, true)}" alt="${esc(p.ru)}"><span><b>${esc(p.ru)}</b><small>${KIND_RU[p.kind]} · «Джеймс Уэбб»</small></span></button>`;
+}
+// просмотр снимка во весь экран
+function openPhoto(id, list) {
+  const p = PHOTOS[id]; if (!p) return;
+  let box = $("#lightbox");
+  if (!box) {
+    box = document.createElement("div"); box.id = "lightbox"; box.className = "lightbox"; box.setAttribute("role", "dialog");
+    document.body.append(box);
+    box.addEventListener("click", (e) => { if (e.target === box || e.target.closest("[data-lb=close]")) closeLb(); const nav = e.target.closest("[data-lb-go]"); if (nav) openPhoto(nav.dataset.lbGo, box.__list); });
+    document.addEventListener("keydown", (e) => { if (!box.classList.contains("on")) return; if (e.key === "Escape") closeLb(); if (e.key === "ArrowRight") box.querySelector("[data-lb-next]")?.click(); if (e.key === "ArrowLeft") box.querySelector("[data-lb-prev]")?.click(); });
+  }
+  box.__list = list || [id];
+  const L = box.__list, i = L.indexOf(id), prev = L[(i - 1 + L.length) % L.length], next = L[(i + 1) % L.length];
+  box.innerHTML = `<figure>
+      <div class="lb-img"><img src="${photoSrc(id, true)}" alt="${esc(p.ru)}"><img class="full" src="${photoSrc(id)}" alt=""></div>
+      <figcaption><span class="eyebrow">${KIND_RU[p.kind]} телескопа «Джеймс Уэбб»</span><h3>${esc(p.ru)}</h3><p>${esc(p.about)}</p>
+      <p class="credit">Изображение: ${esc(p.credit)}. Источник: <a href="https://esawebb.org/images/${id}/" target="_blank" rel="noopener">esawebb.org</a>, лицензия CC BY 4.0.</p>
+      ${L.length > 1 ? `<div class="btn-row"><button class="btn" data-lb-go="${prev}" data-lb-prev>← Предыдущий</button><button class="btn" data-lb-go="${next}" data-lb-next>Следующий →</button></div>` : ""}</figcaption>
+      <button class="lb-x" data-lb="close" aria-label="Закрыть">✕</button></figure>`;
+  const full = box.querySelector("img.full"); full.onload = () => full.classList.add("ready");
+  box.classList.add("on"); document.body.classList.add("lb-open");
+  function closeLb() { box.classList.remove("on"); document.body.classList.remove("lb-open"); }
+}
+document.addEventListener("click", (e) => { const b = e.target.closest("[data-photo]"); if (b) { const grid = b.closest("[data-photos]"); openPhoto(b.dataset.photo, grid ? grid.dataset.photos.split(",") : null); } });
+
+function viewUniverse() {
+  const n = TOPICS.length;
+  app.innerHTML = `
+  <section class="view">
+    <div class="hero u-hero">
+      <div class="u-hero-img" style="background-image:url('${photoSrc("weic2205a")}')"></div>
+      <div class="eyebrow">Полный гид · ${n} тем · ${GLOSSARY.length} терминов · ${Object.keys(PHOTOS).length} снимков «Уэбба»</div>
+      <h1>Вселенная</h1>
+      <p class="lede">Как появилась Вселенная, откуда берутся звёзды и галактики, что такое чёрные дыры, нейтронные звёзды и экзопланеты. У каждой темы — своя 3D-модель, которую можно крутить и разбирать, и настоящие снимки телескопа «Джеймс Уэбб».</p>
+      <div class="btn-row" style="margin-top:18px"><a class="btn" href="#/universe/bigbang">Начать с Большого взрыва →</a><a class="btn" href="#/glossary">Словарь терминов</a><a class="btn" href="#/gallery">Галерея «Уэбба»</a></div>
+    </div>
+    <h2>История Вселенной за минуту</h2>
+    <p class="section-note">13,8 миллиарда лет — от первой доли секунды до сегодняшнего дня.</p>
+    <ol class="cosmic-tl">${COSMIC_TIMELINE.map(([t, h, d], i) => `<li style="--k:${i / (COSMIC_TIMELINE.length - 1)}"><span class="ct-t">${esc(t)}</span><b>${esc(h)}</b><span class="ct-d">${esc(d)}</span></li>`).join("")}</ol>
+    ${GROUPS.map((g) => `<h2>${esc(g.name)}</h2><div class="grid u-grid">${TOPICS.filter((t) => t.group === g.id).map((t) => `
+      <a class="card u-card" href="#/universe/${t.id}"><span class="u-img" style="background-image:url('${photoSrc(t.photo, true)}')"></span>
+        <span class="num">U.${TOPICS.indexOf(t) + 1} · ${t.view.anatomy ? "3D-разрез" : "3D-модель"}</span><h3>${esc(t.name)}</h3><p>${esc(t.tagline)}</p></a>`).join("")}</div>`).join("")}
+  </section>`;
+}
+
+function viewTopic(id) {
+  const t = TOPIC[id]; if (!t) return viewNotFound();
+  const i = TOPICS.indexOf(t), prev = TOPICS[i - 1], next = TOPICS[i + 1];
+  const g = GROUPS.find((x) => x.id === t.group);
+  const body = t.view.anatomy ? CBODIES[t.view.anatomy] : null;
+  const terms = t.terms.map((k) => GLOSSARY.find((x) => x.id === k)).filter(Boolean);
+  app.innerHTML = `
+  <section class="view">
+    <div class="crumbs"><a href="#/">Главная</a> / <a href="#/universe">Вселенная</a> / ${esc(t.name)}</div>
+    <div class="hero u-topic-hero" style="padding-top:18px">
+      <div class="eyebrow">${esc(g.name)} · U.${i + 1}</div>
+      <h1>${esc(t.name)}</h1>
+      <p class="lede">${esc(t.tagline)}</p>
+    </div>
+    <button class="u-banner" data-photo="${t.photo}" data-photos-src="${t.photos.join(",")}" style="background-image:url('${photoSrc(t.photo)}')"><span>${esc(PHOTOS[t.photo].ru)} · снимок «Джеймса Уэбба» · нажми, чтобы рассмотреть</span></button>
+    ${plate({ fig: `Fig U.${i + 1}`, title: `${t.name}${body ? " · разрез" : ""}`, hint: '<span class="only-mouse">Тяни — вращать · колесо — масштаб · наведи на подпись</span><span class="only-touch">Веди пальцем вбок — вращать · коснись номера</span>',
+      extra: `<div class="controls" id="uctl">${body ? `
+        <label class="ctl">Разрез <input type="range" id="cut" min="0" max="180" value="90"><output id="cutv">90°</output></label>
+        <label class="ctl">Разобрать <input type="range" id="exp" min="0" max="100" value="0"><output id="expv">0%</output></label>` : ""}</div>
+      <div class="legend" id="legend"></div>
+      <p class="caption"><b>Модель условная:</b> размеры и расстояния во Вселенной так огромны, что их сжимают, чтобы всё поместилось на экране. Цвета и форма — как у настоящих объектов.</p>` })}
+    <div class="stats">${t.stats.map(([k, v, u]) => `<div class="stat"><div class="k">${esc(k)}</div><div class="v">${esc(v)} <small>${esc(u)}</small></div></div>`).join("")}</div>
+    <div class="two-col">
+      <div><h2>Коротко</h2>${t.about.map((x) => `<p>${esc(x)}</p>`).join("")}</div>
+      <div><h2>${body ? "Слои" : "Части модели"}</h2><ol class="layers-list" id="parts">${body ? body.layers.map((l, k) => `<li data-i="${k}"><span class="n">${String(k + 1).padStart(2, "0")}</span><span class="sw" style="background:${l.color}"></span><div><b>${esc(l.name)}</b><p>${esc(l.desc)}</p></div></li>`).join("") : ""}</ol></div>
+    </div>
+    <h2>Термины</h2>
+    <div class="terms">${terms.map((x) => `<a class="term" href="#/glossary?t=${x.id}"><b>${esc(x.term)}</b><span>${esc(x.def)}</span></a>`).join("")}</div>
+    <h2>Снимки «Джеймса Уэбба»</h2>
+    <div class="photo-grid" data-photos="${t.photos.join(",")}">${t.photos.map(photoCard).join("")}</div>
+    <h2>Знаешь ли ты?</h2>
+    <div class="facts">${t.facts.map((f, k) => `<div class="fact"><span class="eyebrow">Факт ${k + 1}</span>${esc(f)}</div>`).join("")}</div>
+    <h2>История открытий</h2>
+    <ul class="timeline">${t.history.map(([y, x]) => `<li><span class="yr">${esc(y)}</span><div><p>${esc(x)}</p></div></li>`).join("")}</ul>
+    <nav class="pager">${prev ? `<a href="#/universe/${prev.id}"><span class="eyebrow">← Назад</span><b>${esc(prev.name)}</b></a>` : `<a href="#/universe"><span class="eyebrow">←</span><b>Все темы</b></a>`}${next ? `<a class="next" href="#/universe/${next.id}"><span class="eyebrow">Дальше →</span><b>${esc(next.name)}</b></a>` : `<a class="next" href="#/glossary"><span class="eyebrow">Дальше →</span><b>Словарь терминов</b></a>`}</nav>
+  </section>`;
+  // баннер открывает галерею темы
+  const ban = $(".u-banner"); ban.addEventListener("click", (e) => { e.stopPropagation(); openPhoto(t.photo, t.photos); }, true);
+  if (!GL) return;
+  const list = $("#parts"), legend = $("#legend");
+  mountLater(async (stale) => {
+    const stage = $(".stage");
+    if (body) {
+      const { mountAnatomy } = await import("./anatomy3d.js"); if (stale()) return;
+      stage.closest(".plate").classList.add("space");
+      const fig = mountAnatomy({ stage, svg: $("svg.callouts", stage), labelsEl: $(".labels", stage), body, onReadout: readoutSetter(app),
+        onLayer: (k) => { list.querySelectorAll("li").forEach((li) => li.classList.toggle("on", +li.dataset.i === k)); } });
+      current = fig; setTimeout(figReady, 0);
+      legend.innerHTML = body.layers.map((l, k) => `<span data-i="${k}"><i style="background:${l.color}"></i>${String(k + 1).padStart(2, "0")} ${esc(l.name)}</span>`).join("");
+      const cut = $("#cut"), exp = $("#exp");
+      cut.addEventListener("input", () => { fig.setCut(+cut.value); $("#cutv").textContent = cut.value + "°"; });
+      exp.addEventListener("input", () => { fig.setExplode(+exp.value / 100); $("#expv").textContent = exp.value + "%"; });
+      list.addEventListener("click", (e) => { const li = e.target.closest("li"); if (li) fig.pin(+li.dataset.i); });
+      legend.addEventListener("click", (e) => { const sp = e.target.closest("span[data-i]"); if (sp) fig.pin(+sp.dataset.i); });
+    } else {
+      const { mountScene } = await import("./cosmos3d.js"); if (stale()) return;
+      const fig = mountScene({ stage, svg: $("svg.callouts", stage), labelsEl: $(".labels", stage), scene: t.view.scene, onReadout: readoutSetter(app),
+        onLabel: (k) => { list.querySelectorAll("li").forEach((li) => li.classList.toggle("on", +li.dataset.i === k)); legend.querySelectorAll("span").forEach((x) => x.classList.toggle("on", +x.dataset.i === k)); } });
+      current = fig; setTimeout(figReady, 0);
+      list.innerHTML = fig.labels.map((l, k) => `<li data-i="${k}"><span class="n">${String(k + 1).padStart(2, "0")}</span><span class="sw" style="background:var(--strong)"></span><div><b>${esc(l.name)}</b><p>${esc(l.desc)}</p></div></li>`).join("") || `<li><div><p>Наведи или коснись объектов на модели — подписи у каждого.</p></div></li>`;
+      legend.innerHTML = fig.labels.map((l, k) => `<span data-i="${k}"><i style="background:var(--strong)"></i>${String(k + 1).padStart(2, "0")} ${esc(l.name)}</span>`).join("");
+      list.addEventListener("click", (e) => { const li = e.target.closest("li[data-i]"); if (li) { fig.pin(+li.dataset.i); $(".plate").scrollIntoView({ behavior: "smooth", block: "center" }); } });
+      list.addEventListener("mouseover", (e) => { const li = e.target.closest("li[data-i]"); if (li) fig.hover(+li.dataset.i); });
+      list.addEventListener("mouseleave", () => fig.hover(-1));
+      legend.addEventListener("click", (e) => { const sp = e.target.closest("span[data-i]"); if (sp) fig.pin(+sp.dataset.i); });
+      // элементы управления сцены
+      const box = $("#uctl");
+      fig.controls.forEach((c) => {
+        if (c.type === "buttons") {
+          const row = document.createElement("div"); row.className = "btn-row";
+          row.innerHTML = c.items.map(([v, l]) => `<button class="btn" data-v="${v}" aria-pressed="${String(v) === String(c.value)}">${esc(l)}</button>`).join("");
+          row.addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; row.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b)); fig.control(c.id, b.dataset.v); });
+          box.append(row);
+        } else if (c.type === "range") {
+          const lab = document.createElement("label"); lab.className = "ctl";
+          lab.innerHTML = `${esc(c.label)} <input type="range" min="${c.min}" max="${c.max}" value="${c.value}"><output>авто</output>`;
+          const inp = lab.querySelector("input"), out = lab.querySelector("output");
+          inp.addEventListener("input", () => { fig.control(c.id, +inp.value); out.textContent = inp.value + "%"; });
+          box.append(lab);
+        }
+      });
+    }
+  });
+}
+
+function viewGlossary(params) {
+  const want = params.get("t");
+  const letters = [...new Set(GLOSSARY.map((g) => g.term[0].toUpperCase()))];
+  app.innerHTML = `
+  <section class="view">
+    <div class="crumbs"><a href="#/">Главная</a> / <a href="#/universe">Вселенная</a> / Словарь</div>
+    <div class="hero" style="padding-top:18px"><div class="eyebrow">${GLOSSARY.length} терминов</div><h1>Словарь Вселенной</h1>
+      <p class="lede">Короткие и понятные объяснения слов, которые встречаются в астрономии. Нажми на тему, чтобы открыть 3D-модель.</p>
+      <input class="g-search" type="search" placeholder="Найти термин…" aria-label="Поиск термина"></div>
+    <div class="g-letters">${letters.map((l) => `<a href="#" data-l="${l}">${l}</a>`).join("")}</div>
+    <dl class="glossary">${GLOSSARY.map((g) => `<div class="g-item" id="g-${g.id}" data-l="${g.term[0].toUpperCase()}" data-q="${esc((g.term + " " + g.def).toLowerCase())}">
+      <dt>${esc(g.term)}</dt><dd>${esc(g.def)}${g.topic && TOPIC[g.topic] ? ` <a class="go" href="#/universe/${g.topic}">${esc(TOPIC[g.topic].name)} →</a>` : ""}</dd></div>`).join("")}</dl>
+  </section>`;
+  const inp = $(".g-search");
+  inp.addEventListener("input", () => { const q = inp.value.trim().toLowerCase(); document.querySelectorAll(".g-item").forEach((el) => (el.hidden = q && !el.dataset.q.includes(q))); });
+  $(".g-letters").addEventListener("click", (e) => { const a = e.target.closest("a"); if (!a) return; e.preventDefault(); document.querySelector(`.g-item[data-l="${a.dataset.l}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }); });
+  if (want) setTimeout(() => { const el = $(`#g-${want}`); if (el) { el.classList.add("hl"); el.scrollIntoView({ behavior: "smooth", block: "center" }); } }, 80);
+}
+
+function viewGallery() {
+  const ids = Object.keys(PHOTOS);
+  const cats = [["all", "Все"], ["deep", "Далёкая Вселенная"], ["gal", "Галактики"], ["birth", "Рождение звёзд"], ["death", "Гибель звёзд"], ["planets", "Планеты и экзопланеты"]];
+  const catOf = (id) => {
+    const t = TOPICS.find((x) => x.photos.includes(id) && x.photo === id) || TOPICS.find((x) => x.photos.includes(id));
+    if (["weic2214a", "weic2310a", "weic2419a", "weic2323a", "weic2314a"].includes(id)) return "planets";
+    if (!t) return "deep";
+    return { bigbang: "deep", expansion: "deep", darkmatter: "deep", cosmicweb: "deep", galaxies: "gal", quasars: "gal", starbirth: "birth", starsizes: "birth", lifecycle: "death", redgiant: "death", whitedwarf: "death", supernova: "death", neutron: "death", pulsar: "death", blackhole: "gal", gravwaves: "death", exoplanets: "planets" }[t.id] || "deep";
+  };
+  app.innerHTML = `
+  <section class="view">
+    <div class="crumbs"><a href="#/">Главная</a> / <a href="#/universe">Вселенная</a> / Галерея</div>
+    <div class="hero" style="padding-top:18px"><div class="eyebrow">${ids.length} снимков · ESA/Webb, NASA, CSA, STScI · CC BY 4.0</div><h1>Галерея «Джеймса Уэбба»</h1>
+      <p class="lede">Настоящие снимки самого большого космического телескопа. «Уэбб» смотрит в инфракрасном свете: видит сквозь пыль и ловит свет первых галактик. Нажми на снимок, чтобы рассмотреть и узнать, что на нём.</p></div>
+    <div class="filters" id="gf">${cats.map(([k, l]) => `<button class="chip" data-c="${k}" aria-pressed="${k === "all"}">${l}</button>`).join("")}</div>
+    <div class="photo-grid big" data-photos="${ids.join(",")}">${ids.map((id) => photoCard(id).replace('class="ph"', `class="ph" data-c="${catOf(id)}"`)).join("")}</div>
+  </section>`;
+  $("#gf").addEventListener("click", (e) => {
+    const b = e.target.closest(".chip"); if (!b) return;
+    $("#gf").querySelectorAll(".chip").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    const c = b.dataset.c, shown = [];
+    document.querySelectorAll(".photo-grid .ph").forEach((el) => { const on = c === "all" || el.dataset.c === c; el.hidden = !on; if (on) shown.push(el.dataset.photo); });
+    $(".photo-grid").dataset.photos = shown.join(",");
+  });
+}
+
 // ------------------------------------------------------------ ИСТОРИЯ
 function viewHistory() {
   app.innerHTML = `
@@ -520,7 +709,7 @@ function route(keepScroll = false) {
   const parts = path.split("/").filter(Boolean);
   const params = new URLSearchParams(qs || "");
   document.querySelectorAll(".nav a").forEach((a) => a.removeAttribute("aria-current"));
-  const mark = (sel) => $(`.nav a[href="${sel}"]`)?.setAttribute("aria-current", "page");
+  const mark = (sel) => { const el = $(`.nav a[href="${sel}"]`); el?.setAttribute("aria-current", "page"); $(".nav-drop")?.classList.toggle("cur", !!el?.closest(".drop")); };
   $(".nav").classList.remove("open");
   if (!parts.length) { viewHome(); mark("#/"); }
   else if (parts[0] === "body") { viewBody(parts[1]); if (SYS_ORDER.includes(parts[1])) mark(`#/system/${parts[1]}`); else mark("#/planets"); }
@@ -528,6 +717,9 @@ function route(keepScroll = false) {
   else if (parts[0] === "sat") { viewSat(parts[1]); mark("#/system/earth"); }
   else if (parts[0] === "system") { viewSystem(parts[1], params); mark(`#/system/${parts[1]}`); }
   else if (parts[0] === "history") { viewHistory(); mark("#/history"); }
+  else if (parts[0] === "universe") { parts[1] ? viewTopic(parts[1]) : viewUniverse(); mark("#/universe"); }
+  else if (parts[0] === "glossary") { viewGlossary(params); mark("#/universe"); }
+  else if (parts[0] === "gallery") { viewGallery(); mark("#/universe"); }
   else if (parts[0] === "planets") { viewHome(); mark("#/planets"); setTimeout(() => $("#planets")?.scrollIntoView({ behavior: "smooth" }), 50); }
   else viewNotFound();
   const title = $("h1")?.textContent;
@@ -536,3 +728,4 @@ function route(keepScroll = false) {
 }
 window.addEventListener("hashchange", () => route());
 route();
+$(".nav-drop .drop")?.addEventListener("click", () => document.activeElement?.blur?.()); // закрыть меню «Спутники» после выбора

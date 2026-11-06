@@ -36,12 +36,18 @@
     <nav class="nav">
       <a href="#/">Система</a>
       <a href="#/planets">Планеты</a>
-      <a href="#/system/earth">Земля</a>
-      <a href="#/system/mars">Марс</a>
-      <a href="#/system/jupiter">Юпитер</a>
-      <a href="#/system/saturn">Сатурн</a>
-      <a href="#/system/uranus">Уран</a>
-      <a href="#/system/neptune">Нептун</a>
+      <div class="nav-drop">
+        <button class="nav-drop-btn" aria-haspopup="true">Спутники ▾</button>
+        <div class="drop">
+          <a href="#/system/earth">Земля</a>
+          <a href="#/system/mars">Марс</a>
+          <a href="#/system/jupiter">Юпитер</a>
+          <a href="#/system/saturn">Сатурн</a>
+          <a href="#/system/uranus">Уран</a>
+          <a href="#/system/neptune">Нептун</a>
+        </div>
+      </div>
+      <a href="#/universe">Вселенная</a>
       <a href="#/history">История</a>
       <button class="icon-btn tour-nav" data-tour-start>▶ Экскурсия</button>
       <button class="icon-btn" id="theme">☾ Тёмная</button>
