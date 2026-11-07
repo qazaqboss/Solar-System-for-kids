@@ -98,6 +98,12 @@ function viewHome() {
     <p class="section-note">У Меркурия и Венеры спутников нет. У остальных планет — свои системы: у Земли Луна и тысячи искусственных спутников, у Марса ${SYSTEMS.mars.total}, у Юпитера ${SYSTEMS.jupiter.total}, у Сатурна ${SYSTEMS.saturn.total}, у Урана ${SYSTEMS.uranus.total}, у Нептуна ${SYSTEMS.neptune.total}. Каждый спутник с именем разобран отдельно.</p>
     <div class="grid" id="systems"></div>
 
+    <a class="live-promo" href="#/live">
+      <span class="eyebrow"><span class="live-dot"></span> В реальном времени</span>
+      <b>Где всё сейчас</b>
+      <span>Точное положение планет, фаза Луны, спутники Юпитера и МКС над Землёй — в эту секунду. С «машиной времени» на год вперёд и назад.</span>
+      <i>Открыть →</i>
+    </a>
     <a class="u-promo" href="#/universe" style="background-image:url('img/webb/weic2216b.jpg')">
       <span class="eyebrow">Новый раздел · полный гид</span>
       <b>Вселенная</b>
@@ -695,6 +701,17 @@ function viewHistory() {
   </section>`;
 }
 
+// ------------------------------------------------------------ СЕЙЧАС (реальное время)
+function viewLive(params) {
+  app.innerHTML = `<section class="view"><div class="hero"><h1>Где всё сейчас</h1><p class="lede">Считаю положения планет…</p></div></section>`;
+  const seq = routeSeq;
+  import("./live.js").then(({ mountLive }) => {
+    if (seq !== routeSeq) return;
+    current = mountLive(app, { plate, GL, BY_ID, tab: params.get("tab") || "planets" });
+    window.__fig = null;
+  }).catch((e) => { console.error(e); app.innerHTML = `<section class="view"><div class="hero"><h1>Не получилось загрузить</h1><p class="lede">Обнови страницу.</p></div></section>`; });
+}
+
 function viewNotFound() {
   app.innerHTML = `<section class="view"><div class="hero"><h1>Тут пусто, как в космосе</h1><p class="lede">Такой страницы нет. <a href="#/">На главную →</a></p></div></section>`;
 }
@@ -716,6 +733,7 @@ function route(keepScroll = false) {
   else if (parts[0] === "moon") { const m = findMoon(parts[1]); if (isSat(m)) { location.replace(`#/sat/${m.id}`); return; } viewMoon(parts[1]); if (m) mark(`#/system/${m.system}`); }
   else if (parts[0] === "sat") { viewSat(parts[1]); mark("#/system/earth"); }
   else if (parts[0] === "system") { viewSystem(parts[1], params); mark(`#/system/${parts[1]}`); }
+  else if (parts[0] === "live") { viewLive(params); mark("#/live"); }
   else if (parts[0] === "history") { viewHistory(); mark("#/history"); }
   else if (parts[0] === "universe") { parts[1] ? viewTopic(parts[1]) : viewUniverse(); mark("#/universe"); }
   else if (parts[0] === "glossary") { viewGlossary(params); mark("#/universe"); }
