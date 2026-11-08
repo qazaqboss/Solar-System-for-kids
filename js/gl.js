@@ -16,6 +16,7 @@ export function liveTexture(look, w, h, { mobileScale = 0.5 } = {}) {
   const tex = new THREE.CanvasTexture(makeTexture(look, 96, 48));
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
+  tex.anisotropy = 8; // чёткая текстура у края шара (WebGL сам ограничит максимумом видеокарты)
   const swap = (img) => { tex.dispose(); tex.image = img; tex.needsUpdate = true; }; // старая (маленькая) текстура освобождается на GPU
   if (look.photo) {
     // настоящая фотокарта (img/tex): на телефоне и для мелких объектов — 1024 px

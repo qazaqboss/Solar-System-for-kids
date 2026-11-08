@@ -3,7 +3,7 @@
 // Планеты стоят на своих НАСТОЯЩИХ местах (эфемериды JPL) и бегут с выбранной скоростью.
 import * as THREE from "three";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
-import { createStage, follow, reducedMotion, declutter } from "./gl.js";
+import { createStage, follow, reducedMotion, declutter, photoUrl } from "./gl.js";
 import { mulberry } from "./textures.js";
 import { phaseOf, PLUTO } from "./track.js";
 import { helio, moon as moonPos, galilean } from "./ephem.js";
@@ -72,7 +72,14 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
     m.side = THREE.FrontSide; m.roughness = 0.92; m.metalness = 0;
     if (m.name === "pluto") m.color = new THREE.Color("#e3c4a4"); // в модели у Плутона текстура Меркурия — делаем её теплее
     if (m.name === "saturn_ring") { m.side = THREE.DoubleSide; m.depthWrite = false; m.opacity = 0.85; }
-    if (m.map) m.map.anisotropy = 4;
+    if (m.map) m.map.anisotropy = 8;
+    // Юпитер: подробная карта «Хаббла» (OPAL, heic1522a) вместо маленькой текстуры из модели
+    if (m.name === "jupiter") {
+      new THREE.TextureLoader().load(photoUrl("jupiter", 1024), (t) => {
+        t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+        m.map?.dispose(); m.map = t; m.needsUpdate = true;
+      });
+    }
   });
 
   const items = IDS.map((id) => {
@@ -139,6 +146,8 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
         const color = MOON_COL[m.id] || (sy.groups?.[m.group]?.color ?? "#b9bfca");
         const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, big ? 20 : 8, big ? 14 : 6), new THREE.MeshStandardMaterial({ color, roughness: 0.95, emissive: new THREE.Color(color), emissiveIntensity: big ? 0.08 : 0.35 }));
         mesh.scale.setScalar(size); mesh.userData.moon = m.id; mesh.userData.sys = pid; mesh.userData.size = size;
+        // «Хаббл» и «Уэбб» — крошечные настоящие 3D-модели вместо шарика (шарик остаётся невидимой мишенью)
+        if (m.glb) import("./glb.js").then(({ miniModel }) => miniModel(m.glb)).then((w) => { w.scale.multiplyScalar(5); mesh.add(w); mesh.material.visible = false; }).catch(() => {});
         moonPick.push(mesh);
         holder.add(mesh);
         let line = null;

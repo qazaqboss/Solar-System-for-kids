@@ -344,6 +344,36 @@ const MODELS = {
   },
 };
 
+// =============================================================== НАСТОЯЩИЕ 3D-МОДЕЛИ (.glb)
+// Узлы в файле называются p<номер детали>_…; dir — куда деталь отъезжает при разборке.
+const GLB = {
+  hubble: {
+    url: "models/hubble.glb",
+    rotY: -Math.PI / 2.4, // трубой вбок, крышкой влево — как на фото
+    parts: [
+      { name: "Труба телескопа", desc: "Корпус длиной 13 м и диаметром 4,2 м в серебристой многослойной теплоизоляции. Внутри — чёрные бленды, они гасят паразитный свет. Жёлтые поручни — для астронавтов-ремонтников.", dir: [0, 0, 0] },
+      { name: "Главное зеркало 2,4 м", desc: "Собирает свет звёзд. Отполировано так гладко, что если бы оно было размером с Землю, самая высокая «гора» на нём была бы ниже 15 см.", dir: [0, 1.5, 0] },
+      { name: "Вторичное зеркало", desc: "Зеркало диаметром 30 см на растяжках-«спицах». Отражает свет обратно через отверстие в главном зеркале — к приборам.", dir: [0, 1.25, -0.4] },
+      { name: "Приборный отсек", desc: "Камеры и спектрографы в отсеках с дверцами. Астронавты пять раз прилетали на шаттле и меняли приборы прямо в космосе.", dir: [0, 0, 1] },
+      { name: "Крышка апертуры", desc: "Откинутая крышка на входе трубы. Закроется сама, если телескоп повернётся к Солнцу — иначе свет сжёг бы приборы.", dir: [0, 0, -1] },
+      { name: "Солнечные батареи", desc: "Две панели по 2,6 × 7,1 м дают ≈5,5 кВт. На тени Земли телескоп работает от аккумуляторов.", dir: [0, 1, 0], dirs: { p5_solar_a: [0, 1, 0], p5_solar_b: [0, -1, 0] } },
+      { name: "Антенны связи", desc: "Две параболические антенны на длинных штангах передают снимки через спутники-ретрансляторы TDRS.", dir: [1, 0, 0], dirs: { p6_antenna_a: [1, 0, 0], p6_antenna_b: [-1, 0, 0] } },
+    ],
+  },
+  jwst: {
+    url: "models/jwst.glb",
+    view: [1.0, 0.3, 0.28], // сбоку-сверху: видны и золотое зеркало, и слои щита
+    parts: [
+      { name: "Солнечный щит (5 слоёв)", desc: "Пять слоёв каптона толщиной с волос, размером с теннисный корт. Сторона к Солнцу нагревается до +85 °C, а у зеркала −233 °C. При разборке слои расходятся.", dir: [0, 0, 0], layers: true },
+      { name: "Главное зеркало 6,5 м", desc: "18 шестиугольных сегментов из бериллия, покрытых тонким слоем золота — оно лучше всего отражает инфракрасный свет. В космосе зеркало раскрылось, как цветок.", dir: [0, 0.9, -0.2] },
+      { name: "Вторичное зеркало", desc: "Круглое зеркало 0,74 м на трёх длинных штангах. Собирает свет с главного зеркала и направляет его к приборам.", dir: [0, 0.35, 1] },
+      { name: "Научные приборы", desc: "NIRCam, NIRSpec, MIRI и NIRISS спрятаны в модуле за зеркалом, в холоде и тени. MIRI охлаждают до −266 °C.", dir: [0, 0.4, -1] },
+      { name: "Служебный модуль", desc: "Компьютер, двигатели, связь и солнечная батарея — на горячей стороне щита. Башня соединяет его с холодной частью.", dir: [0, -1, 0] },
+    ],
+  },
+};
+export const hasRealModel = (sat) => !!GLB[sat.glb];
+
 // =============================================================== ОКРУЖЕНИЕ «КОСМОС»
 function makeStars(n) {
   const r = mulberry(21), pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
@@ -396,24 +426,75 @@ export function mountSat({ stage, svg, labelsEl, sat, onReadout, onPart, space =
   const stars = makeStars(S.mobile ? 900 : 1600); scene.add(stars);
   const earth = makeEarth(sat); scene.add(earth);
 
-  const parts = (MODELS[sat.model] || MODELS.eo)();
+  // детали: у «Хаббла» и «Уэбба» — настоящие 3D-модели (грузятся из .glb), у остальных — собраны из фигур
+  const real = GLB[sat.glb];
+  const parts = real ? real.parts.map((p) => ({ name: p.name, desc: p.desc, objs: [] })) : (MODELS[sat.model] || MODELS.eo)();
   const root = new THREE.Group(); scene.add(root);
-  parts.forEach((p, i) => p.objs.forEach((o) => {
+  const state = { ex: 0, exT: 0.3, hover: -1, pinned: -1, space, ready: !real };
+  let spread = 1, rad = 1, fly = null;
+  const home = { pos: new THREE.Vector3(), target: new THREE.Vector3() };
+
+  function addPart(i, o, k = 1) {
     o.traverse((m) => { if (m.isMesh) m.userData.part = i; });
     o.userData.home = o.position.clone();
-    o.userData.dirV = new THREE.Vector3(...o.userData.dir);
-    root.add(o);
-  }));
-  // вписать модель в кадр
-  const bb = new THREE.Box3().setFromObject(root), size = bb.getSize(new THREE.Vector3()), ctr = bb.getCenter(new THREE.Vector3());
-  root.position.sub(ctr);
-  const rad = size.length() / 2;
-  const dist = (rad / Math.tan(THREE.MathUtils.degToRad(15))) * 1.12;
-  camera.position.set(dist * 0.55, dist * 0.38, dist * 0.74);
-  controls.minDistance = dist * 0.35; controls.maxDistance = dist * 2.4;
-  const spread = rad * 0.42;
+    o.userData.dirV = new THREE.Vector3(...(o.userData.dir || [0, 0, 0]));
+    o.userData.k = k; // масштаб родителя: разборка задаётся в мировых единицах
+  }
+  /** Вписать модель в кадр и запомнить «домашний» вид камеры. */
+  function fit() {
+    const bb = new THREE.Box3().setFromObject(root), size = bb.getSize(new THREE.Vector3()), ctr = bb.getCenter(new THREE.Vector3());
+    root.position.sub(ctr);
+    rad = size.length() / 2;
+    const dist = (rad / Math.tan(THREE.MathUtils.degToRad(15))) * 1.12;
+    const vw = new THREE.Vector3(...(real?.view || [0.55, 0.38, 0.74])).normalize().multiplyScalar(dist);
+    home.pos.copy(vw); home.target.set(0, 0, 0);
+    camera.position.copy(home.pos); controls.target.copy(home.target);
+    // приближение: можно подлететь почти вплотную к детали
+    controls.minDistance = rad * 0.18; controls.maxDistance = dist * 2.4;
+    camera.near = Math.max(0.005, rad * 0.004); camera.updateProjectionMatrix();
+    spread = rad * 0.42;
+  }
 
-  const state = { ex: 0, exT: 0.3, hover: -1, pinned: -1, space };
+  if (!real) {
+    parts.forEach((p, i) => p.objs.forEach((o) => { root.add(o); addPart(i, o); }));
+    fit();
+  } else {
+    import("./glb.js").then(({ loadGLB, partNodes, crisp }) => loadGLB(real.url).then((gltf) => {
+      if (disposed) return;
+      const model = gltf.scene;
+      // привести к размеру ≈ упрощённых моделей (Земля и звёзды на фоне рассчитаны на него)
+      const bb0 = new THREE.Box3().setFromObject(model), k = 7 / bb0.getSize(new THREE.Vector3()).length();
+      model.scale.setScalar(k);
+      if (real.rotY) model.rotation.y = real.rotY;
+      root.add(model);
+      model.traverse((m) => {
+        if (!m.isMesh) return;
+        m.material = m.material.clone(); // своя копия: подсветка детали не задевает соседние
+        const mt = m.material;
+        mt.side = THREE.DoubleSide;
+        if (mt.emissive && !mt.emissiveMap) { mt.emissive.set("#ffffff"); mt.emissiveIntensity = 0; }
+        if (/gold/i.test(mt.name)) { mt.color.set("#ffd98a"); mt.metalness = 1; mt.roughness = 0.12; mt.envMapIntensity = 2.4; }
+        crisp(mt, renderer);
+      });
+      const nodes = partNodes(model);
+      real.parts.forEach((p, i) => {
+        const mine = nodes.filter((n) => +n.name.match(/^p(\d+)_/)[1] === i);
+        mine.sort((a, b) => a.name.localeCompare(b.name));
+        const layers = p.layers ? mine.filter((n) => /layer/.test(n.name)) : [];
+        mine.forEach((n) => {
+          n.userData.dir = p.dirs?.[n.name] || p.dir;
+          // слои щита расходятся веером вверх-вниз
+          if (layers.includes(n)) n.userData.dir = [0, (layers.indexOf(n) - (layers.length - 1) / 2) * 0.5, 0];
+          parts[i].objs.push(n); addPart(i, n, k);
+        });
+      });
+      fit();
+      state.ready = true; state.ex = 0;
+      layoutDirty = true; readout();
+      stage.classList.add("glb-ready");
+    })).catch((e) => { console.error(e); onReadout?.("Не удалось загрузить 3D-модель — проверь интернет"); });
+  }
+
   function applySpace() {
     const on = state.space;
     scene.background = on ? new THREE.Color("#04060b") : null;
@@ -425,14 +506,15 @@ export function mountSat({ stage, svg, labelsEl, sat, onReadout, onPart, space =
   }
   applySpace();
 
-  // ---- выноски
+  // ---- выноски: видна только та, на которую навели (или выбрали), — с описанием
   const NS = "http://www.w3.org/2000/svg";
   svg.innerHTML = ""; labelsEl.innerHTML = "";
+  svg.classList.add("reveal"); labelsEl.classList.add("reveal");
   const callouts = parts.map((p, i) => {
     const path = document.createElementNS(NS, "path"), dot = document.createElementNS(NS, "circle");
     dot.setAttribute("r", "2.6"); svg.append(path, dot);
     const el = document.createElement("div"); el.className = "callout-label"; el.dataset.n = String(i + 1).padStart(2, "0");
-    el.innerHTML = `<b>${String(i + 1).padStart(2, "0")} ${p.name}</b>`;
+    el.innerHTML = `<b>${String(i + 1).padStart(2, "0")} ${p.name}</b><span class="d">${p.desc}</span>`;
     el.addEventListener("pointerenter", () => setHover(i)); el.addEventListener("pointerleave", () => setHover(-1));
     el.addEventListener("click", () => setPinned(state.pinned === i ? -1 : i));
     labelsEl.append(el);
@@ -440,9 +522,12 @@ export function mountSat({ stage, svg, labelsEl, sat, onReadout, onPart, space =
   });
   const tmpBox = new THREE.Box3();
   const anchors = parts.map(() => new THREE.Vector3());
+  let layoutDirty = true;
   function layout() {
+    if (!state.ready) return;
     const W = S.width, H = S.height;
     const compact = W < 560; // телефон: номера деталей прямо на модели
+    const a = active();
     const items = parts.map((p, i) => {
       // якорь — центр первого куска детали (у симметричных крыльев общий центр попал бы на корпус)
       tmpBox.makeEmpty(); tmpBox.expandByObject(p.objs[0]);
@@ -454,25 +539,28 @@ export function mountSat({ stage, svg, labelsEl, sat, onReadout, onPart, space =
       const bs = spreadBadges(items.map((x) => ({ x: x.p.x, y: x.p.y, it: x })));
       bs.forEach((b) => { b.it.bx = b.x; b.it.by = b.y; });
       items.forEach((x) => {
-        const c = callouts[x.i], on = state.hover === x.i || state.pinned === x.i;
+        const c = callouts[x.i], on = a === x.i;
         c.el.classList.add("compact"); c.path.style.opacity = "0"; c.dot.style.opacity = "0";
         c.el.style.left = x.bx + "px"; c.el.style.top = x.by + "px";
         c.el.classList.toggle("on", on);
+        c.el.style.opacity = x.p.z > 1 ? 0 : "";
       });
       return;
     }
     callouts.forEach((c) => { c.el.classList.remove("compact"); c.path.style.opacity = ""; c.dot.style.opacity = ""; });
-    const colX = W - 220, gap = 30, total = (items.length - 1) * gap;
-    items.sort((a, b) => a.p.y - b.p.y);
+    const colX = W - 250, gap = 30, total = (items.length - 1) * gap;
+    items.sort((p, q) => p.p.y - q.p.y);
     const y0 = Math.max(52, Math.min(H - 52 - total, H / 2 - total / 2));
     items.forEach((x, k) => {
-      const c = callouts[x.i], ly = y0 + k * gap, on = state.hover === x.i || state.pinned === x.i;
+      const c = callouts[x.i], on = a === x.i;
+      // описание под подписью не должно вылезать за нижний край
+      const ly = on ? Math.min(y0 + k * gap, H - 120) : y0 + k * gap;
       c.el.style.left = colX + 14 + "px"; c.el.style.top = ly - 7 + "px";
       const px = Math.min(x.p.x, colX - 40), mx = Math.max(px + 18, colX - 30);
       c.path.setAttribute("d", `M${px.toFixed(1)},${x.p.y.toFixed(1)} L${mx.toFixed(1)},${ly.toFixed(1)} L${(colX + 8).toFixed(1)},${ly.toFixed(1)}`);
       c.dot.setAttribute("cx", px.toFixed(1)); c.dot.setAttribute("cy", x.p.y.toFixed(1));
       [c.path, c.dot, c.el].forEach((e) => e.classList.toggle("on", on));
-      c.el.classList.toggle("dim", (state.hover >= 0 || state.pinned >= 0) && !on);
+      c.el.classList.remove("dim");
     });
   }
   const active = () => (state.hover >= 0 ? state.hover : state.pinned);
@@ -485,51 +573,86 @@ export function mountSat({ stage, svg, labelsEl, sat, onReadout, onPart, space =
     onPart?.(a); readout();
   }
   function readout() {
+    if (!state.ready) { onReadout?.(`${sat.name} · загружаем 3D-модель…`); return; }
     const a = active();
     onReadout?.(a >= 0 ? `${String(a + 1).padStart(2, "0")} ${parts[a].name}` : `${sat.name} · ${parts.length} узлов · разбор ${Math.round(state.ex * 100)}%`);
   }
-  function setHover(i) { if (state.hover !== i) { state.hover = i; highlight(); } }
-  function setPinned(i) { state.pinned = i; highlight(); }
+  let lastPart = 0;
+  function setHover(i) { if (state.hover !== i) { state.hover = i; if (i >= 0) lastPart = i; highlight(); } }
+  function setPinned(i) { state.pinned = i; if (i >= 0) lastPart = i; highlight(); }
+
+  // ---- приближение: плавный подлёт камеры
+  const v1 = new THREE.Vector3(), v2 = new THREE.Vector3();
+  function flyTo(pos, target) { fly = { pos: pos.clone(), target: target.clone() }; S.touch(); }
+  /** Подлететь к детали i (или к целому аппарату, если i < 0). */
+  function focus(i) {
+    if (!state.ready) return;
+    if (i < 0) return flyTo(home.pos, home.target);
+    tmpBox.makeEmpty(); parts[i].objs.forEach((o) => tmpBox.expandByObject(o));
+    const c = tmpBox.getCenter(v1), r = Math.max(tmpBox.getSize(v2).length() / 2, rad * 0.12);
+    const dir = camera.position.clone().sub(controls.target).normalize();
+    const d = Math.min(controls.maxDistance, Math.max(controls.minDistance * 1.05, (r / Math.tan(THREE.MathUtils.degToRad(15))) * 1.25));
+    flyTo(c.clone().addScaledVector(dir, d), c);
+  }
+  function zoomBy(f) {
+    const off = camera.position.clone().sub(controls.target);
+    const d = THREE.MathUtils.clamp(off.length() * f, controls.minDistance, controls.maxDistance);
+    flyTo(controls.target.clone().addScaledVector(off.normalize(), d), controls.target);
+  }
 
   // ---- указатель
   const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
   function pickPart(e) {
+    if (!state.ready) return -1;
     const r = renderer.domElement.getBoundingClientRect();
     ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ptr, camera);
     const h = ray.intersectObject(root, true).find((x) => x.object.userData.part !== undefined);
     return h ? h.object.userData.part : -1;
   }
-  let raf = 0, lastE = null, downAt = null;
+  let raf = 0, lastE = null, downAt = null, disposed = false;
   renderer.domElement.addEventListener("pointermove", (e) => { if (e.pointerType === "touch") return; lastE = e; if (!raf) raf = requestAnimationFrame(() => { raf = 0; setHover(pickPart(lastE)); }); });
   renderer.domElement.addEventListener("pointerleave", (e) => { if (e.pointerType !== "touch") setHover(-1); });
-  renderer.domElement.addEventListener("pointerdown", (e) => { downAt = [e.clientX, e.clientY]; });
+  renderer.domElement.addEventListener("pointerdown", (e) => { downAt = [e.clientX, e.clientY]; fly = null; });
+  renderer.domElement.addEventListener("wheel", () => { fly = null; }, { passive: true });
+  // касание (телефон): деталь выбирается и её описание остаётся, пока не коснёшься пустого места.
+  // Мышь: описание видно только пока курсор на детали.
   renderer.domElement.addEventListener("pointerup", (e) => {
     if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 8) return;
+    if (e.pointerType !== "touch") return;
     const i = pickPart(e); setPinned(i === state.pinned ? -1 : i);
   });
+  // двойной клик — подлететь к детали; по пустому месту — вернуться к целому аппарату
+  renderer.domElement.addEventListener("dblclick", (e) => focus(pickPart(e)));
 
   let t0 = -1;
   S.onFrame((dt, t, idle) => {
     const rm = reducedMotion();
-    if (t0 < 0) t0 = t;
-    const intro = t - t0; // реальное время, а не число кадров — на медленном телефоне не «застревает»
+    if (t0 < 0 && state.ready) t0 = t;
+    const intro = t0 < 0 ? 0 : t - t0; // реальное время, а не число кадров — на медленном телефоне не «застревает»
     const target = intro < 1.2 ? 0 : state.exT;
     const prev = state.ex;
     state.ex = follow(state.ex, target, dt, rm ? 0.22 : 0.35);
-    if (Math.abs(prev - state.ex) > 1e-4 || intro < 0.1) {
-      parts.forEach((p) => p.objs.forEach((o) => o.position.copy(o.userData.home).addScaledVector(o.userData.dirV, state.ex * spread)));
+    if (state.ready && (Math.abs(prev - state.ex) > 1e-4 || layoutDirty)) {
+      layoutDirty = false;
+      parts.forEach((p) => p.objs.forEach((o) => o.position.copy(o.userData.home).addScaledVector(o.userData.dirV, (state.ex * spread) / o.userData.k)));
       readout();
     }
+    if (fly) {
+      const kf = 1 - Math.exp(-dt / (rm ? 0.05 : 0.22));
+      camera.position.lerp(fly.pos, kf); controls.target.lerp(fly.target, kf);
+      if (camera.position.distanceTo(fly.pos) < rad * 0.002) fly = null;
+    }
     earth.userData.earth.rotation.y += dt * 0.004; // Земля медленно поворачивается под аппаратом
-    if (!rm && idle > 4) root.rotation.y += dt * 0.1;
+    if (!rm && idle > 4 && !fly && state.pinned < 0) root.rotation.y += dt * 0.1;
     layout();
   });
   S.start(); readout();
   return {
     setExplode(x) { state.exT = x; S.touch(); },
     setSpace(on) { state.space = on; applySpace(); },
-    pin: setPinned, hover: setHover, parts,
-    dispose: () => S.dispose(),
+    pin: setPinned, hover: setHover, lastPart: () => lastPart, parts, real: !!real,
+    focus, zoomIn: () => zoomBy(0.7), zoomOut: () => zoomBy(1.4), reset: () => focus(-1),
+    dispose: () => { disposed = true; S.dispose(); },
   };
 }

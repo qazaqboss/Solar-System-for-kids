@@ -700,3 +700,22 @@ body.fs3d figure:has(.plate.fs) #lp-focus .chip { background: rgba(4, 6, 11, .72
 body.fs3d figure:has(.plate.fs) #lp-focus .chip[aria-pressed="true"] { color: #fff; box-shadow: 0 0 0 1px #8fd8ff; }
 body.fs3d .plate.fs .obj-info { max-width: 46vw; }
 body.fs3d .view, body.fs3d figure, body.fs3d #live-panel { animation: none !important; transform: none !important; filter: none !important; contain: none !important; }
+
+/* Описание по наведению: пока ни на что не навели — выносок нет; навели на деталь —
+   появляется её подпись с линией и описанием; убрали курсор — плавно исчезает. */
+.labels.reveal .callout-label:not(.compact) { opacity: 0; pointer-events: none; transform: translateX(6px); transition: opacity .25s, transform .25s var(--ease), color .2s; }
+.labels.reveal .callout-label.on:not(.compact) { opacity: 1; pointer-events: auto; transform: none; }
+svg.callouts.reveal path, svg.callouts.reveal circle { opacity: 0; transition: opacity .25s; }
+svg.callouts.reveal path.on, svg.callouts.reveal circle.on { opacity: 1; }
+.callout-label .d { display: none; }
+.labels.reveal .callout-label.on:not(.compact) .d {
+  display: block; margin-top: 5px; width: 206px; white-space: normal;
+  font: 400 12px/1.4 var(--sans, system-ui); letter-spacing: 0; color: var(--text);
+}
+.labels.reveal .callout-label.on:not(.compact) { background: var(--card); padding: 6px 9px 8px; margin-top: -4px; box-shadow: 0 0 0 1px var(--strong), 0 6px 18px rgba(0,0,0,.18); border-radius: 3px; }
+.plate.space .labels.reveal .callout-label.on:not(.compact) { background: rgba(6, 9, 16, .9); box-shadow: 0 0 0 1px rgba(238,241,246,.55), 0 8px 24px rgba(0,0,0,.5); }
+.plate.space .labels.reveal .callout-label.on .d { color: #cfd5df; }
+#zoom .btn { min-width: 34px; }
+/* в сценах «Вселенной» точки-якоря видны всегда — на них наводят курсор */
+svg.callouts.reveal.dots circle { opacity: .85; r: 3.4px; }
+svg.callouts.reveal.dots circle.on { opacity: 1; }

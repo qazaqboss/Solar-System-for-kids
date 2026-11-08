@@ -140,7 +140,7 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
 
   // --- материалы
   const surfTex = liveTexture(body.look, irregular ? 512 : 1024, irregular ? 256 : 512);
-  surfTex.anisotropy = S.mobile ? 2 : 4;
+  surfTex.anisotropy = S.mobile ? 4 : 8;
 
   const layers = body.layers.map((l, i) => {
     const outerSolid = i === solidCount - 1;
@@ -250,6 +250,8 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
   const NS = "http://www.w3.org/2000/svg";
   svg.innerHTML = "";
   labelsEl.innerHTML = "";
+  // описание по наведению: подпись слоя с описанием видна, только пока на слой наведён курсор
+  svg.classList.add("reveal"); labelsEl.classList.add("reveal");
   const callouts = layers.map((L, i) => {
     const path = document.createElementNS(NS, "path");
     const dot = document.createElementNS(NS, "circle");
@@ -258,10 +260,10 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
     const el = document.createElement("div");
     el.className = "callout-label";
     el.dataset.n = String(i + 1).padStart(2, "0");
-    el.innerHTML = `<span class="sw" style="background:${L.def.color}"></span><b>${String(i + 1).padStart(2, "0")} ${L.def.name}</b>`;
+    el.innerHTML = `<span class="sw" style="background:${L.def.color}"></span><b>${String(i + 1).padStart(2, "0")} ${L.def.name}</b>${L.def.desc ? `<span class="d">${L.def.desc}</span>` : ""}`;
     el.addEventListener("pointerenter", () => setHover(i));
     el.addEventListener("pointerleave", () => setHover(-1));
-    el.addEventListener("click", () => setPinned(state.pinned === i ? -1 : i));
+    el.addEventListener("click", (e) => { if (e.pointerType === "touch" || el.classList.contains("compact")) setPinned(state.pinned === i ? -1 : i); });
     labelsEl.append(el);
     return { path, dot, el };
   });
@@ -306,7 +308,7 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
     }
     callouts.forEach((c) => c.el.classList.remove("compact"));
     const shown = items.filter((x) => !x.hidden);
-    const colX = W - 210;
+    const colX = W - 250;
     shown.sort((a, b) => b.i - a.i); // сверху — внешний слой, снизу — ядро
     const gap = 30, total = (shown.length - 1) * gap;
     let y0 = Math.max(52, Math.min(H - 52 - total, shown.reduce((s, x) => s + x.p.y, 0) / Math.max(1, shown.length) - total / 2));
@@ -316,14 +318,15 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
       const on = state.hover === x.i || state.pinned === x.i;
       if (x.hidden) { c.el.style.opacity = "0"; c.path.style.opacity = "0"; c.dot.style.opacity = "0"; return; }
       const op = x.facing > -0.05 ? 1 : 0.25;
-      c.el.style.opacity = op; c.path.style.opacity = op; c.dot.style.opacity = op;
+      if (on) x.ly = Math.min(x.ly, H - 130); // описание под подписью не вылезает за низ рамки
+      c.el.style.opacity = on ? op : 0; c.path.style.opacity = on ? op : 0; c.dot.style.opacity = on ? op : 0;
       c.el.style.left = colX + 14 + "px";
       c.el.style.top = x.ly - 7 + "px";
       const mx = Math.max(x.p.x + 18, colX - 30);
       c.path.setAttribute("d", `M${x.p.x.toFixed(1)},${x.p.y.toFixed(1)} L${mx.toFixed(1)},${x.ly.toFixed(1)} L${(colX + 8).toFixed(1)},${x.ly.toFixed(1)}`);
       c.dot.setAttribute("cx", x.p.x.toFixed(1)); c.dot.setAttribute("cy", x.p.y.toFixed(1));
       c.path.classList.toggle("on", on); c.dot.classList.toggle("on", on); c.el.classList.toggle("on", on);
-      c.el.classList.toggle("dim", (state.hover >= 0 || state.pinned >= 0) && !on);
+      c.el.classList.remove("dim");
     });
   }
 
@@ -373,6 +376,7 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
   S.renderer.domElement.addEventListener("pointerup", (e) => {
     // короткое касание/клик (без перетаскивания) — выбрать слой
     if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 8) return;
+    if (e.pointerType !== "touch") return; // мышь: описание видно только при наведении
     const i = pickLayer(e);
     setPinned(i === state.pinned ? -1 : i);
   });

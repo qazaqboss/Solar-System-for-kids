@@ -478,8 +478,9 @@ function viewSat(id) {
         <label class="ctl">Разобрать <input type="range" id="exp" min="0" max="100" value="30"><output id="expv">30%</output></label>
         <div class="btn-row"><button class="btn" id="apart">Разобрать на детали</button><button class="btn" id="whole">Собрать</button></div>
         <span>Вид</span><div class="btn-row" id="look"><button class="btn" data-v="space">Космос</button><button class="btn" data-v="plan">Чертёж</button></div>
+        <span>Приближение</span><div class="btn-row" id="zoom"><button class="btn" data-z="in" aria-label="Приблизить">＋</button><button class="btn" data-z="out" aria-label="Отдалить">－</button><button class="btn" data-z="part">К детали</button><button class="btn" data-z="all">Весь аппарат</button></div>
       </div><div class="legend" id="legend"></div>
-      <p class="caption"><b>Как читать.</b> Модель упрощённая: показаны главные узлы аппарата и из чего они сделаны — золотая и серебристая теплоизоляция, солнечные элементы, радиаторы. Пропорции приближены к настоящим, мелкие детали опущены. В режиме «Космос» аппарат освещён Солнцем на фоне звёзд и Земли.</p>` })}
+      <p class="caption"><b>Как читать.</b> ${m.glb ? "Настоящая подробная 3D-модель аппарата: видны поручни, отсеки, антенны и фольга теплоизоляции." : "Модель упрощённая: показаны главные узлы аппарата и из чего они сделаны — золотая и серебристая теплоизоляция, солнечные элементы, радиаторы. Пропорции приближены к настоящим, мелкие детали опущены."} Наведи на деталь — появится её название и описание, убери курсор — оно спрячется. Колесо мыши или два пальца — приблизить; двойной клик по детали (или «К детали») — камера подлетит к ней. В режиме «Космос» аппарат освещён Солнцем на фоне звёзд и Земли.</p>` })}
     <div class="stats">${stats.map(([k, v, u]) => `<div class="stat"><div class="k">${esc(k)}</div><div class="v" style="${String(v).length > 14 ? "font-size:13.5px" : ""}">${esc(v)} <small>${esc(u)}</small></div></div>`).join("")}</div>
     <div class="two-col">
       <div><h2>Из чего состоит</h2><ol class="layers-list" id="layers"></ol></div>
@@ -515,8 +516,16 @@ function viewSat(id) {
     $("#whole").addEventListener("click", () => { exp.value = 0; exp.dispatchEvent(new Event("input")); });
     list2.addEventListener("mouseover", (e) => { const li = e.target.closest("li"); if (li) fig.hover(+li.dataset.i); });
     list2.addEventListener("mouseleave", () => fig.hover(-1));
-    list2.addEventListener("click", (e) => { const li = e.target.closest("li"); if (li) { fig.pin(+li.dataset.i); $(".plate").scrollIntoView({ behavior: "smooth", block: "center" }); } });
-    legend.addEventListener("click", (e) => { const sp = e.target.closest("span[data-i]"); if (sp) fig.pin(+sp.dataset.i); });
+    list2.addEventListener("click", (e) => { const li = e.target.closest("li"); if (li) { fig.focus(+li.dataset.i); $(".plate").scrollIntoView({ behavior: "smooth", block: "center" }); } });
+    legend.addEventListener("click", (e) => { const sp = e.target.closest("span[data-i]"); if (sp) fig.focus(+sp.dataset.i); });
+    legend.addEventListener("mouseover", (e) => { const sp = e.target.closest("span[data-i]"); if (sp) fig.hover(+sp.dataset.i); });
+    legend.addEventListener("mouseleave", () => fig.hover(-1));
+    $("#zoom").addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      const z = b.dataset.z;
+      if (z === "in") fig.zoomIn(); else if (z === "out") fig.zoomOut(); else if (z === "all") { fig.pin(-1); fig.reset(); }
+      else fig.focus(fig.lastPart());
+    });
   });
 }
 
