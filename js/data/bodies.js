@@ -9,7 +9,7 @@ export const BODIES = [
   // ===================================================================== СОЛНЦЕ
   {
     id: "sun", name: "Солнце", latin: "Sol", type: "star", radius: 696340,
-    look: { style: "sun", seed: 2 }, emissive: true,
+    look: { photo: "sun", style: "sun", seed: 2 }, emissive: true,
     tagline: "Звезда-жёлтый карлик, в которой сосредоточено 99,86 % массы всей Солнечной системы.",
     stats: [
       ["Радиус", "696 340", "км"], ["Масса", "1,989·10³⁰", "кг"], ["Плотность", "1,41", "г/см³"],
@@ -44,7 +44,7 @@ export const BODIES = [
   // ===================================================================== МЕРКУРИЙ
   {
     id: "mercury", name: "Меркурий", latin: "Mercury", type: "planet", order: 1, radius: 2439.7,
-    look: { style: "rocky", seed: 11, ramp: [[0, "#3e3a36"], [0.5, "#86807a"], [1, "#cfc8bd"]], craters: 420, maxCrater: 0.18, rays: true },
+    look: { photo: "mercury", style: "rocky", seed: 11, ramp: [[0, "#3e3a36"], [0.5, "#86807a"], [1, "#cfc8bd"]], craters: 420, maxCrater: 0.18, rays: true },
     tagline: "Самая маленькая и самая близкая к Солнцу планета с огромным железным ядром.",
     orbit: { a: 0.387, period: 87.97, color: "#9a948b" },
     stats: [
@@ -74,7 +74,7 @@ export const BODIES = [
   // ===================================================================== ВЕНЕРА
   {
     id: "venus", name: "Венера", latin: "Venus", type: "planet", order: 2, radius: 6051.8,
-    look: { style: "venus", seed: 21 }, atmo: { color: "#f2d39a", scale: 1.05, opacity: 0.35 },
+    look: { photo: "venus", style: "venus", seed: 21 }, atmo: { color: "#f2d39a", scale: 1.05, opacity: 0.35 },
     tagline: "Самая горячая планета: под облаками серной кислоты +464 °C и давление в 92 раза больше земного.",
     orbit: { a: 0.723, period: 224.7, color: "#d6b578" },
     stats: [
@@ -105,7 +105,7 @@ export const BODIES = [
   // ===================================================================== ЗЕМЛЯ
   {
     id: "earth", name: "Земля", latin: "Terra", type: "planet", order: 3, radius: 6371,
-    look: { style: "earth", seed: 31 }, atmo: { color: "#7fb4ff", scale: 1.035, opacity: 0.3 },
+    look: { photo: "earth", style: "earth", seed: 31 }, atmo: { color: "#7fb4ff", scale: 1.035, opacity: 0.3 },
     tagline: "Наш дом — единственная известная планета с жидкими океанами на поверхности и жизнью.",
     orbit: { a: 1.0, period: 365.25, color: "#4f86d8" },
     stats: [
@@ -138,7 +138,7 @@ export const BODIES = [
   // ===================================================================== ЛУНА
   {
     id: "moon", name: "Луна", latin: "Luna", type: "moon", parent: "earth", radius: 1737.4,
-    look: { style: "rocky", seed: 41, ramp: [[0, "#2e2e2e"], [0.5, "#8a8986"], [1, "#d8d6d0"]], craters: 360, maxCrater: 0.14, maria: 0.55, rays: true },
+    look: { photo: "moon", style: "rocky", seed: 41, ramp: [[0, "#2e2e2e"], [0.5, "#8a8986"], [1, "#d8d6d0"]], craters: 360, maxCrater: 0.14, maria: 0.55, rays: true },
     tagline: "Спутник Земли, который всегда повёрнут к нам одной стороной.",
     stats: [
       ["Радиус", "1 737", "км"], ["Масса", "7,35·10²²", "кг"], ["Плотность", "3,34", "г/см³"], ["Гравитация", "1,62", "м/с²"],
@@ -166,7 +166,7 @@ export const BODIES = [
   // ===================================================================== МАРС
   {
     id: "mars", name: "Марс", latin: "Mars", system: "mars", type: "planet", order: 4, radius: 3389.5,
-    look: { style: "mars", seed: 51 }, atmo: { color: "#f0a878", scale: 1.02, opacity: 0.18 },
+    look: { photo: "mars", style: "mars", seed: 51 }, atmo: { color: "#f0a878", scale: 1.02, opacity: 0.18 },
     tagline: "Красная планета с самым высоким вулканом и самым большим каньоном Солнечной системы.",
     orbit: { a: 1.524, period: 687, color: "#c1673a" },
     stats: [
@@ -195,7 +195,7 @@ export const BODIES = [
   // ===================================================================== ЮПИТЕР
   {
     id: "jupiter", name: "Юпитер", latin: "Jupiter", type: "planet", order: 5, radius: 69911, system: "jupiter",
-    look: { style: "banded", seed: 61, freq: 15, bands: [[0, "#6e4a30"], [0.3, "#b0835a"], [0.55, "#e2cba8"], [0.75, "#f4ead8"], [1, "#c9a07a"]], spot: [-0.39, 0.9, 0.11, "#b8502e"], polar: "#5a6070" },
+    look: { photo: "jupiter", style: "banded", seed: 61, freq: 15, bands: [[0, "#6e4a30"], [0.3, "#b0835a"], [0.55, "#e2cba8"], [0.75, "#f4ead8"], [1, "#c9a07a"]], spot: [-0.39, 0.9, 0.11, "#b8502e"], polar: "#5a6070" },
     tagline: "Газовый гигант, в котором поместились бы все остальные планеты вместе взятые.",
     orbit: { a: 5.203, period: 4332.6, color: "#c9a07a" },
     stats: [
@@ -225,7 +225,7 @@ export const BODIES = [
   // ===================================================================== САТУРН
   {
     id: "saturn", name: "Сатурн", latin: "Saturnus", type: "planet", order: 6, radius: 58232, system: "saturn", rings: "saturn",
-    look: { style: "banded", seed: 71, freq: 12, contrast: 0.5, turb: 0.4, bands: [[0, "#a0845a"], [0.4, "#d4b98a"], [0.7, "#ecdcb4"], [1, "#f6ecd2"]], polar: "#7a8a8a" },
+    look: { photo: "saturn", style: "banded", seed: 71, freq: 12, contrast: 0.5, turb: 0.4, bands: [[0, "#a0845a"], [0.4, "#d4b98a"], [0.7, "#ecdcb4"], [1, "#f6ecd2"]], polar: "#7a8a8a" },
     tagline: "Планета-«властелин колец»: кольца шириной ≈280 000 км и толщиной всего от 10 м до 1 км.",
     orbit: { a: 9.537, period: 10759, color: "#d4b98a" },
     stats: [
@@ -254,7 +254,7 @@ export const BODIES = [
   // ===================================================================== УРАН
   {
     id: "uranus", name: "Уран", latin: "Uranus", system: "uranus", type: "planet", order: 7, radius: 25362, rings: "uranus",
-    look: { style: "banded", seed: 81, freq: 8, contrast: 0.12, turb: 0.15, bands: [[0, "#8ec8d0"], [0.5, "#a6dde2"], [1, "#c8eef0"]] },
+    look: { photo: "uranus", style: "banded", seed: 81, freq: 8, contrast: 0.12, turb: 0.15, bands: [[0, "#8ec8d0"], [0.5, "#a6dde2"], [1, "#c8eef0"]] },
     tagline: "Ледяной гигант, который вращается «лёжа на боку» — его ось наклонена на 98°.",
     orbit: { a: 19.19, period: 30687, color: "#9fd6dc" }, tilt: 97.8,
     stats: [
@@ -280,7 +280,7 @@ export const BODIES = [
   // ===================================================================== НЕПТУН
   {
     id: "neptune", name: "Нептун", latin: "Neptunus", system: "neptune", type: "planet", order: 8, radius: 24622,
-    look: { style: "banded", seed: 91, freq: 10, contrast: 0.3, turb: 0.4, bands: [[0, "#1e3a8a"], [0.5, "#3a62c8"], [1, "#7aa2ff"]], spot: [-0.35, 0.4, 0.09, "#0e1c4a"] },
+    look: { photo: "neptune", style: "banded", seed: 91, freq: 10, contrast: 0.3, turb: 0.4, bands: [[0, "#1e3a8a"], [0.5, "#3a62c8"], [1, "#7aa2ff"]], spot: [-0.35, 0.4, 0.09, "#0e1c4a"] },
     tagline: "Самая далёкая планета с самыми быстрыми ветрами — до 2 100 км/ч.",
     orbit: { a: 30.07, period: 60190, color: "#4f74e0" },
     stats: [

@@ -51,6 +51,36 @@ export function starColor(T) {
 }
 function gaussian(r) { let u = 0; for (let i = 0; i < 4; i++) u += r(); return (u - 2) / 2; }
 
+/** Светящийся диск спиральной галактики: туманное свечение рукавов, пыль и розовые облака. */
+function diskTexture({ arms = 2, bar = true, seed = 3, size = 1024 } = {}) {
+  const cv = document.createElement("canvas"); cv.width = cv.height = size;
+  const c = cv.getContext("2d"), r = mulberry(seed + 100), C = size / 2;
+  const blob = (x, y, rad, col, a) => { const g = c.createRadialGradient(x, y, 0, x, y, rad); g.addColorStop(0, col.replace("A", a)); g.addColorStop(1, col.replace("A", 0)); c.fillStyle = g; c.fillRect(x - rad, y - rad, rad * 2, rad * 2); };
+  c.globalCompositeOperation = "lighter";
+  blob(C, C, C * 0.95, "rgba(120,130,170,A)", 0.18);                // общий диск
+  const W = armWeights(arms);
+  for (let k = 0; k < 2600; k++) {                                     // свечение рукавов
+    const arm = pickArm(W, r), u = Math.pow(r(), 0.8), rr = 0.18 + u * 0.8;
+    const th = armAngle(arm, arms) + Math.log(rr / 0.18 + 1) * 2.6 + gaussian(r) * 0.32 * (1.25 - rr);
+    const x = C + Math.cos(th) * rr * C * 0.9, y = C + Math.sin(th) * rr * C * 0.9;
+    blob(x, y, C * (0.03 + r() * 0.05), rr < 0.35 ? "rgba(255,220,170,A)" : "rgba(160,185,255,A)", 0.05 + r() * 0.05);
+    if (r() < 0.05) blob(x, y, C * 0.012, "rgba(255,110,160,A)", 0.55); // облака, где рождаются звёзды
+  }
+  blob(C, C, C * 0.32, "rgba(255,214,160,A)", 0.75);                 // балдж
+  if (bar) { c.save(); c.translate(C, C); c.scale(1, 0.28); blob(0, 0, C * 0.34, "rgba(255,225,180,A)", 0.5); c.restore(); }
+  c.globalCompositeOperation = "destination-out";                       // тёмные пылевые прожилки вдоль внутреннего края рукавов
+  for (let k = 0; k < 1400; k++) {
+    const arm = pickArm(W, r), rr = 0.22 + Math.pow(r(), 0.9) * 0.7;
+    const th = armAngle(arm, arms) + Math.log(rr / 0.18 + 1) * 2.6 - 0.2 + gaussian(r) * 0.06;
+    blob(C + Math.cos(th) * rr * C * 0.9, C + Math.sin(th) * rr * C * 0.9, C * (0.012 + r() * 0.018), "rgba(0,0,0,A)", 0.35);
+  }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+// у Млечного Пути два главных рукава и два послабее
+const armWeights = (arms) => (arms === 4 ? [1, 1, 0.55, 0.55] : Array(arms).fill(1));
+const armAngle = (arm, arms) => (arms === 4 ? [0, Math.PI, Math.PI / 2, (3 * Math.PI) / 2][arm] : arm * (TAU / arms));
+function pickArm(W, r) { const s = W.reduce((a, b) => a + b, 0); let x = r() * s; for (let i = 0; i < W.length; i++) { x -= W[i]; if (x <= 0) return i; } return 0; }
+
 /** Спиральная галактика из точек. */
 function makeGalaxy({ n = 12000, R = 10, arms = 2, bar = true, type = "spiral", seed = 3 } = {}) {
   const r = mulberry(seed), pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
@@ -72,9 +102,9 @@ function makeGalaxy({ n = 12000, R = 10, arms = 2, bar = true, type = "spiral", 
     } else if (bar && k < 0.3) { // бар
       x = (r() * 2 - 1) * R * 0.32; y = gaussian(r) * 0.15; z = gaussian(r) * R * 0.05; c = cBulge.clone();
     } else if (k < 0.97) { // рукава
-      const arm = Math.floor(r() * arms), rr = R * (0.18 + Math.pow(r(), 0.75) * 0.82);
+      const arm = pickArm(armWeights(arms), r), rr = R * (0.18 + Math.pow(r(), 0.75) * 0.82);
       const diffuse = r() < 0.35;
-      const th = arm * (TAU / arms) + Math.log(rr / (R * 0.18) + 1) * 2.6 + gaussian(r) * (diffuse ? 1.6 : 0.5) * (1.25 - rr / R);
+      const th = armAngle(arm, arms) + Math.log(rr / (R * 0.18) + 1) * 2.6 + gaussian(r) * (diffuse ? 1.6 : 0.5) * (1.25 - rr / R);
       x = Math.cos(th) * rr + gaussian(r) * 0.45; z = Math.sin(th) * rr + gaussian(r) * 0.45; y = gaussian(r) * 0.18 * (1.1 - rr / R);
       c = r() < 0.06 ? cPink.clone() : cArm.clone().lerp(cOld, Math.max(0, 0.6 - rr / R));
     } else { // гало
@@ -84,9 +114,14 @@ function makeGalaxy({ n = 12000, R = 10, arms = 2, bar = true, type = "spiral", 
     pos.set([x, y, z], i * 3);
     const b = 0.55 + r() * 0.45; col.set([c.r * b, c.g * b, c.b * b], i * 3);
   }
-  const p = points(pos, col, R * 0.022, 0.95);
+  const p = points(pos, col, R * (n > 14000 ? 0.016 : 0.02), 0.95);
   const core = glow(0xffe6b0, R * (type === "elliptical" ? 0.9 : 0.55), 0.9);
   const g = new THREE.Group(); g.add(p, core);
+  if (type === "spiral") {
+    // туманный диск под звёздами — как на настоящих снимках галактик
+    const disk = new THREE.Mesh(new THREE.PlaneGeometry(R * 2.05, R * 2.05), new THREE.MeshBasicMaterial({ map: diskTexture({ arms, bar, seed }), transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    disk.rotation.x = -Math.PI / 2; g.add(disk);
+  }
   return g;
 }
 
@@ -209,7 +244,7 @@ const SCENES = {
     const holder = new THREE.Group(); root.add(holder);
     function build() {
       if (gal) { holder.remove(gal); gal.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); }); }
-      gal = makeGalaxy({ n: mobile ? 7000 : 15000, R: 10, arms: 2, bar: true, type });
+      gal = makeGalaxy({ n: mobile ? 12000 : 30000, R: 10, arms: type === "spiral" ? 4 : 2, bar: true, type });
       holder.add(gal);
       if (type === "spiral") { sun.position.set(5.5, 0.1, 0); sunRing.position.copy(sun.position); sunRing.rotation.x = -Math.PI / 2; gal.add(sun, sunRing); }
     }

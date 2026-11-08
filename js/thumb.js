@@ -7,7 +7,16 @@ const texData = new Map();
 async function pixels(look, w, h) {
   const key = JSON.stringify(look) + w;
   if (texData.has(key)) return texData.get(key);
-  const cv = await makeTextureAsync(look, w, h);
+  let cv;
+  if (look.photo) {
+    // миниатюра из настоящей фотокарты
+    cv = await new Promise((res) => {
+      const img = new Image();
+      img.onload = () => { const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").drawImage(img, 0, 0, w, h); res(c); };
+      img.onerror = () => makeTextureAsync(look, w, h).then(res);
+      img.src = `img/tex/${look.photo}-s.webp`;
+    });
+  } else cv = await makeTextureAsync(look, w, h);
   const d = cv.getContext("2d").getImageData(0, 0, w, h).data;
   const out = { d, w, h };
   texData.set(key, out);

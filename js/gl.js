@@ -16,13 +16,20 @@ export function liveTexture(look, w, h, { mobileScale = 0.5 } = {}) {
   const tex = new THREE.CanvasTexture(makeTexture(look, 96, 48));
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
-  makeTextureAsync(look, w, h).then((cv) => {
-    tex.dispose(); // освободить старую (маленькую) текстуру на GPU — у новой другой размер
-    tex.image = cv;
-    tex.needsUpdate = true;
-  });
+  const swap = (img) => { tex.dispose(); tex.image = img; tex.needsUpdate = true; }; // старая (маленькая) текстура освобождается на GPU
+  if (look.photo) {
+    // настоящая фотокарта (img/tex): на телефоне и для мелких объектов — 1024 px
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = () => swap(img);
+    img.onerror = () => makeTextureAsync(look, w, h).then(swap);
+    img.src = photoUrl(look.photo, w);
+  } else makeTextureAsync(look, w, h).then(swap);
   return tex;
 }
+
+/** Адрес фотокарты тела: большая (2048) или облегчённая (1024). */
+export const photoUrl = (id, w = 2048) => `img/tex/${id}${w <= 600 || isMobile() ? "-s" : ""}.webp`;
 
 export const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 

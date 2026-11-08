@@ -54,7 +54,7 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
     const seg = S.mobile ? 120 : 200;
     for (let k = 0; k <= seg; k++) { const t = (k / seg) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(t) * r, 0, Math.sin(t) * r).applyQuaternion(q)); }
     const col = groupColor(m.group);
-    const lm = new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: system.groups[m.group].kind === "irregular" ? 0.16 : 0.6 });
+    const lm = new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: system.groups[m.group].kind === "irregular" ? 0.07 : system.groups[m.group].kind === "major" ? 0.6 : 0.32 });
     const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lm);
     if (!m.lag) scene.add(line); // у точек Лагранжа нет круговой орбиты вокруг Земли
     const size = isEarth ? (m.id === "moon" ? 1.1 : 0.34) : Math.max(0.2, 0.1 + Math.log10(Math.max(0.3, m.r)) * 0.42);
