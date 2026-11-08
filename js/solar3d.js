@@ -356,7 +356,7 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
     }
     // кольцо и панель у выбранного объекта (спутник или планета)
     const sel = focusObj ? focusObj : focus ? (() => { const h = items.find((i) => i.id === focus); return h && { mesh: h.mesh, size: h.R }; })() : null;
-    reticle.visible = !!sel;
+    reticle.visible = false; // прицел убран по просьбе — объект выделяют подпись и панель
     if (sel) {
       sel.mesh.getWorldPosition(tmp);
       reticle.position.copy(tmp);
