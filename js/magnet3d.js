@@ -11,7 +11,10 @@ import { mulberry } from "./textures.js";
 
 const TAU = Math.PI * 2;
 const R = 2.2;                       // радиус Земли в единицах сцены
-const SUN_X = -40;                   // Солнце слева (сильно ближе, чем на самом деле)
+const SUN_X = -36;                   // Солнце слева (сильно ближе, чем на самом деле)
+const SUN_R = 6.5;                   // видимый радиус Солнца
+/** Плавный «порывистый» сигнал от −1 до 1: сумма медленных синусов с несоизмеримыми частотами. */
+const gust = (t, s = 0) => 0.5 * Math.sin(t * 0.37 + s) + 0.3 * Math.sin(t * 0.61 + 1.3 + s * 2) + 0.2 * Math.sin(t * 1.13 + 2.1 + s * 3);
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
 
@@ -111,15 +114,75 @@ export function buildMagnetosphere(root, { mobile = false, embed = false } = {})
   const rnd = mulberry(77);
   const st = { mode: "wind", k: 1, kT: 1, r0: 6.2 * R, r0T: 6.2 * R, hit: 0, aur: 0.35, cme: -1, cmeT: 2.5, field: 0, fieldT: 0 };
   const sunDir = new THREE.Vector3(-1, 0, 0);
-  if (!embed) root.position.x = 8; // Земля чуть правее центра — слева видно Солнце
+  if (!embed) root.position.x = 13; // Земля чуть правее центра — слева видно Солнце
 
   // ---------------------------------------------------------------- Солнце
   const sun = new THREE.Group(); sun.position.set(SUN_X, 0, 0); if (!embed) root.add(sun);
-  sun.add(glowSprite(0xfff2c8, 9, 1), glowSprite(0xffc260, 22, 0.75), glowSprite(0xff8a30, 46, 0.35));
-  // лучи: вытянутые светящиеся «спицы» вокруг Солнца
-  const rayMat = new THREE.MeshBasicMaterial({ map: dot(), color: 0xffd28a, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
-  const rays = new THREE.Group(); sun.add(rays);
-  for (let i = 0; i < 14; i++) { const p = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), rayMat); p.scale.set(34 + rnd() * 18, 1.2 + rnd() * 0.8, 1); p.rotation.z = (i / 14) * Math.PI; rays.add(p); }
+  // мягкое свечение, пока модель грузится (и под ней)
+  sun.add(glowSprite(0xffc260, SUN_R * 3.2, 0.55), glowSprite(0xff8a30, SUN_R * 7, 0.22));
+  // корона: тонкие радиальные «стримеры», как на снимках солнечных коронографов
+  const corona = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: { uT: { value: 0 }, uR: { value: 1 / 7 } },
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: `uniform float uT; uniform float uR; varying vec2 vUv;
+      float h(float n){ return fract(sin(n) * 43758.5453); }
+      float nz(float x){ float i = floor(x), f = fract(x); f = f*f*(3.0-2.0*f); return mix(h(i), h(i+1.0), f); }
+      void main(){
+        vec2 p = vUv * 2.0 - 1.0; float r = length(p); float a = atan(p.y, p.x);
+        if (r < uR * 0.9) discard;
+        float x = (r - uR) / (1.0 - uR);
+        // лучи разной длины и яркости, медленно «дышат»
+        float st = 0.0;
+        st += nz(a * 9.0 + uT * 0.05) * 0.55;
+        st += nz(a * 23.0 - uT * 0.08 + 3.0) * 0.35;
+        st += nz(a * 61.0 + uT * 0.11 + 7.0) * 0.25;
+        st = pow(st, 2.2);
+        float fall = exp(-x * (7.0 - 4.0 * st));
+        float glow = exp(-x * 14.0);
+        vec3 c = mix(vec3(1.0, 0.62, 0.26), vec3(1.0, 0.93, 0.78), glow);
+        float I = (glow * 0.9 + fall * st * 0.75) * smoothstep(1.0, 0.7, r);
+        gl_FragColor = vec4(c * I, I);
+      }`,
+  }));
+  corona.scale.setScalar(SUN_R * 7 * 2); corona.renderOrder = -1; sun.add(corona);
+  const sunParts = { inner: null, flares: [], spin: new THREE.Group() };
+  sun.add(sunParts.spin);
+  if (!embed) import("./glb.js").then(({ loadGLB }) => loadGLB("models/sun.glb")).then((g) => {
+    const m = g.scene;
+    // масштаб — по самому шару Солнца (а не по вспышкам), чтобы диск совпал с короной
+    let ball = null; m.traverse((o) => { if (o.isMesh && o.material.name === "sun_inner") ball = o; });
+    const bb = new THREE.Box3().setFromObject(ball || m); m.scale.setScalar((SUN_R * 2) / bb.getSize(new THREE.Vector3()).x);
+    m.traverse((o) => {
+      if (!o.isMesh) return;
+      const n = o.material.name, map = o.material.map;
+      if (map) { map.anisotropy = 8; map.colorSpace = THREE.SRGBColorSpace; }
+      if (n === "sun_inner") {
+        // поверхность: подробная карта (присланная, 2048 px) + потемнение к краю диска, как у настоящего Солнца
+        const hd = new THREE.TextureLoader().load("img/tex/sun-hd.webp"); hd.colorSpace = THREE.SRGBColorSpace; hd.anisotropy = 8;
+        o.material = new THREE.ShaderMaterial({
+          uniforms: { map: { value: hd }, uT: { value: 0 } },
+          vertexShader: `varying vec2 vUv; varying vec3 vN; varying vec3 vV; void main(){ vUv = uv; vec4 mv = modelViewMatrix*vec4(position,1.0); vN = normalize(normalMatrix*normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix*mv; }`,
+          fragmentShader: `uniform sampler2D map; uniform float uT; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+            void main(){
+              float mu = max(dot(normalize(vN), normalize(vV)), 0.0);
+              vec3 c = texture2D(map, vUv).rgb;
+              // мерцание гранул: две копии карты чуть сдвигаются друг относительно друга
+              c = mix(c, texture2D(map, vUv + vec2(0.0015 * sin(uT * 0.7), 0.001 * cos(uT * 0.5))).rgb, 0.5);
+              float limb = 0.35 + 0.65 * pow(mu, 0.55);
+              gl_FragColor = vec4(c * limb * 1.35 + vec3(1.0, 0.55, 0.15) * pow(1.0 - mu, 3.0) * 0.4, 1.0);
+              #include <colorspace_fragment>
+            }`,
+        });
+        sunParts.inner = o.material;
+      } else {
+        // вспышки, протуберанцы и внешнее свечение — светятся «сложением» света
+        o.material = new THREE.MeshBasicMaterial({ map, color: n === "sunouter" ? 0xffb070 : 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, opacity: n === "sunouter" ? 0.55 : 1 });
+        if (n !== "sunouter") sunParts.flares.push({ o, base: o.scale.clone(), ph: rnd() * TAU, sp: 0.6 + rnd() * 0.8 });
+      }
+    });
+    sunParts.spin.add(m);
+  }).catch((e) => console.error(e));
 
   // ---------------------------------------------------------------- Земля
   const earthG = new THREE.Group(); root.add(earthG);
@@ -175,6 +238,7 @@ export function buildMagnetosphere(root, { mobile = false, embed = false } = {})
     let o = 0;
     const put = (v, c) => { linePos[o * 3] = v.x; linePos[o * 3 + 1] = v.y; linePos[o * 3 + 2] = v.z; lineCol[o * 3] = c.r; lineCol[o * 3 + 1] = c.g; lineCol[o * 3 + 2] = c.b; o++; };
     const kk = st.k * (1 - st.field), prev = new THREE.Vector3(), cur = new THREE.Vector3();
+    const wv = 0.35 + 0.65 * kk; // в чистом диполе линии тоже чуть «дышат», под ветром — сильнее
     for (const ln of lines) {
       // в режиме «Магнитное поле» — чистый диполь; дальние линии ночью раскрываются в хвост
       const open = ln.L > 5 && kk > 0.05;
@@ -182,8 +246,13 @@ export function buildMagnetosphere(root, { mobile = false, embed = false } = {})
         cur.copy(ln.pts[k]).applyQuaternion(magQ);
         deform(cur, kk, st.r0);
         if (open && cur.x > 0) cur.multiplyScalar(1 + kk * 0.25 * smooth(4 * R, 9 * R, cur.length()));
+        // по линии бежит медленная волна от Солнца к хвосту — поле плавно колышется
+        { const r = cur.length(), a = smooth(1.6 * R, 7 * R, r) * wv * R * 0.16;
+          cur.y += Math.sin(t * 0.55 - r * 0.32 + ln.phi * 2) * a;
+          cur.z += Math.cos(t * 0.42 - r * 0.27 + ln.phi * 3) * a * 0.7;
+          cur.x += Math.sin(t * 0.33 + ln.phi) * a * 0.4; }
         if (k > 0) {
-          const pulse = 0.55 + 0.45 * Math.sin(t * 2 - (k / SEG) * TAU * 2 + ln.phi * 3);
+          const pulse = 0.6 + 0.4 * Math.sin(t * 0.9 - (k / SEG) * TAU * 2 + ln.phi * 3);
           cc.copy(cNear).lerp(cFar, Math.min(1, (ln.L - 1.3) / 6.5)).multiplyScalar(0.55 + 0.45 * pulse);
           put(prev, cc); put(cur, cc);
         }
@@ -196,7 +265,10 @@ export function buildMagnetosphere(root, { mobile = false, embed = false } = {})
       for (let k = 0; k <= SEG; k++) {
         const u = k / SEG, len = lerp(2, 70, kk) * u;
         cur.set(cap.x + len, cap.y * (1 + 3.2 * Math.sqrt(u)) * lerp(1, tl.h * 3.2, smooth(0.25, 1, u)) , cap.z + tl.a * 5 * Math.sqrt(u));
-        if (k > 0) { const f = (1 - u * 0.85) * (0.55 + 0.45 * Math.sin(t * 2 - u * 18)); cc.copy(cTail).multiplyScalar(f * kk); put(prev, cc); put(cur, cc); }
+        // хвост колышется, как флаг на ветру: волна идёт от Земли к концу хвоста
+        cur.y += Math.sin(t * 0.7 - u * 5.5 + tl.a) * u * 2.6 * kk;
+        cur.z += Math.cos(t * 0.5 - u * 4.2 + tl.a * 2) * u * 1.6 * kk;
+        if (k > 0) { const f = (1 - u * 0.85) * (0.6 + 0.4 * Math.sin(t * 0.9 - u * 9)); cc.copy(cTail).multiplyScalar(f * kk); put(prev, cc); put(cur, cc); }
         prev.copy(cur);
       }
     }
@@ -249,14 +321,21 @@ export function buildMagnetosphere(root, { mobile = false, embed = false } = {})
   const NW = mobile ? 900 : 1800;
   const wPos = new Float32Array(NW * 3), wCol = new Float32Array(NW * 3), wind = [];
   const wGeo = new THREE.BufferGeometry(); wGeo.setAttribute("position", new THREE.BufferAttribute(wPos, 3)); wGeo.setAttribute("color", new THREE.BufferAttribute(wCol, 3));
-  const windPts = new THREE.Points(wGeo, new THREE.PointsMaterial({ size: 0.95, map: dot(), vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending }));
+  const windPts = new THREE.Points(wGeo, new THREE.PointsMaterial({ size: 0.55, map: dot(), vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending }));
   root.add(windPts);
   // у каждой частицы — светящийся след: поток похож на лучи, бьющие от Солнца
   const trPos = new Float32Array(NW * 6), trCol = new Float32Array(NW * 6);
   const trGeo = new THREE.BufferGeometry(); trGeo.setAttribute("position", new THREE.BufferAttribute(trPos, 3)); trGeo.setAttribute("color", new THREE.BufferAttribute(trCol, 3));
-  const trails = new THREE.LineSegments(trGeo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }));
+  const trails = new THREE.LineSegments(trGeo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
   root.add(trails);
-  const spawn = (p, fresh) => { const a = rnd() * TAU, rr = Math.sqrt(rnd()) * 26; p.y = Math.cos(a) * rr; p.z = Math.sin(a) * rr; p.x = fresh ? lerp(SUN_X + 3, 60, rnd()) : SUN_X + 3 + rnd() * 2; p.v = 0.8 + rnd() * 0.4; p.heat = 0; };
+  // частица вылетает с поверхности Солнца и летит радиально — пучок расходится конусом
+  const spawn = (p, fresh) => {
+    const a = rnd() * TAU, c = Math.sqrt(rnd()) * 0.62; // угол от оси «Солнце — Земля» (до ≈35°)
+    p.dx = Math.cos(c); p.dy = Math.sin(c) * Math.cos(a); p.dz = Math.sin(c) * Math.sin(a);
+    const s = SUN_R * 1.02 + (fresh ? rnd() * 100 : rnd() * 2);
+    p.x = SUN_X + p.dx * s; p.y = p.dy * s; p.z = p.dz * s;
+    p.v = 0.7 + rnd() * 0.6; p.b = 0.35 + rnd() * 0.65; p.len = 1.6 + rnd() * 3.4; p.heat = 0; p.px = undefined;
+  };
   for (let i = 0; i < NW; i++) { const p = {}; spawn(p, true); wind.push(p); }
   const cCold = new THREE.Color("#ffd27a"), cHot = new THREE.Color("#fff3e0");
 
@@ -290,7 +369,7 @@ export function buildMagnetosphere(root, { mobile = false, embed = false } = {})
   return {
     st, mag, setMode,
     labels: [
-      { name: "Солнце и солнечный ветер", desc: "Солнце всё время выдувает поток заряженных частиц — солнечный ветер. Он мчится к Земле со скоростью около 400 км/с.", at: () => new THREE.Vector3(SUN_X + 6, 6, 0) },
+      { name: "Солнце и вспышки", desc: "Над поверхностью Солнца поднимаются петли раскалённой плазмы — протуберанцы, а при вспышках выбрасывается энергия миллиардов атомных бомб. Солнце всё время выдувает поток частиц — солнечный ветер, он летит к Земле со скоростью около 400 км/с.", at: () => new THREE.Vector3(SUN_X + SUN_R * 0.6, SUN_R * 0.6, SUN_R * 0.5) },
       { name: "Ударная волна", desc: "Ветер летит быстрее звука в космической плазме, поэтому перед магнитным полем Земли образуется ударная волна — как перед носом катера.", at: () => new THREE.Vector3(-st.r0 * 1.32, 4, 0) },
       { name: "Магнитопауза — щит Земли", desc: "Граница, где давление солнечного ветра уравновешено магнитным полем. Днём она в ≈10 радиусах Земли, а в бурю прижимается ближе.", at: () => new THREE.Vector3(-st.r0, 0.2, 0) },
       { name: "Силовые линии поля", desc: "Земля — как огромный магнит: жидкое железо во внешнем ядре вращается и создаёт поле. Линии выходят у одного полюса и входят у другого.", at: () => new THREE.Vector3(-1.4 * R, 2.4 * R, 0).applyQuaternion(mag.quaternion) },
@@ -311,7 +390,7 @@ export function buildMagnetosphere(root, { mobile = false, embed = false } = {})
       }
       if (st.cme >= 0) {
         st.cme += dt * sp * 0.42;
-        const x = lerp(SUN_X + 4, 40, st.cme), rad = lerp(5, 40, st.cme);
+        const x = lerp(SUN_X + SUN_R, 40, st.cme), rad = lerp(SUN_R * 0.8, 40, st.cme);
         cme.visible = true; cme.position.set(x - rad, 0, 0); cme.scale.setScalar(rad);
         cme.material.uniforms.uA.value = Math.sin(Math.min(1, st.cme) * Math.PI) * 0.9;
         if (x > -st.r0 * 1.3 && x < 0) st.hit = Math.min(1, st.hit + dt * 2.5);
@@ -320,7 +399,8 @@ export function buildMagnetosphere(root, { mobile = false, embed = false } = {})
       st.hit = Math.max(0, st.hit - dt * 0.35);
       // давление ветра прижимает щит; удар облака плазмы — ещё сильнее
       st.r0T = (st.mode === "storm" ? 5.4 : 6.2) * R - st.hit * 1.6 * R;
-      st.r0 = lerp(st.r0, st.r0T, 1 - Math.exp(-dt * 2));
+      st.r0 = lerp(st.r0, st.r0T * (1 + 0.045 * gust(t * sp) * (1 - st.field)), 1 - Math.exp(-dt * 1.2));
+      mag.rotation.y = Math.sin(t * sp * 0.08) * 0.6; // ось магнита плавно покачивается — линии поля «плывут»
       const showWind = 1 - st.field;
       mp.scale.setScalar(st.r0); bs.scale.setScalar(st.r0 * 1.3);
       for (const m of [mp, bs]) { m.material.uniforms.uT.value = t; m.material.uniforms.uHit.value = st.hit; m.visible = showWind > 0.05; m.material.uniforms.uK.value = (m === mp ? 0.55 : 0.32) * showWind; }
@@ -329,8 +409,15 @@ export function buildMagnetosphere(root, { mobile = false, embed = false } = {})
       earth.rotation.y += dt * 0.05 * sp;
       earthMat.uniforms.fade.value = lerp(1, 0.4, st.field);
       bar.visible = st.field > 0.05; barN.material.opacity = barS.material.opacity = st.field;
-      rays.rotation.z += dt * 0.04 * sp;
-      rays.children.forEach((r, i) => { r.material.opacity = 0.25 + 0.1 * Math.sin(t * 1.3 + i); });
+      // Солнце медленно вращается; вспышки и протуберанцы плавно разгораются и гаснут
+      sunParts.spin.rotation.y += dt * 0.025 * sp;
+      corona.material.uniforms.uT.value = t * sp;
+      if (sunParts.inner) sunParts.inner.uniforms.uT.value = t * sp;
+      for (const f of sunParts.flares) {
+        const k = 0.5 + 0.5 * Math.sin(t * sp * f.sp * 0.6 + f.ph) * (st.mode === "storm" ? 1 : 0.8);
+        f.o.material.opacity = 0.45 + 0.55 * k;
+        f.o.scale.copy(f.base).multiplyScalar(0.9 + 0.22 * k + (st.mode === "storm" ? 0.1 : 0));
+      }
 
       buildLines(t * sp);
 
@@ -344,24 +431,27 @@ export function buildMagnetosphere(root, { mobile = false, embed = false } = {})
 
       // солнечный ветер: обтекает щит; у ударной волны частицы тормозят и раскаляются
       windPts.visible = showWind > 0.05; windPts.material.opacity = 0.95 * showWind;
-      const speed = (st.mode === "storm" ? 26 : 17) * sp;
+      const speed = (st.mode === "storm" ? 26 : 17) * sp * (1 + 0.12 * gust(t * sp, 1.7)); // ветер порывистый
       for (let i = 0; i < NW; i++) {
         const p = wind[i];
         const bsR = rhoMP(p.x / (st.r0 * 1.3)) * st.r0 * 1.3;
         const inside = bsR > 0 && Math.hypot(p.y, p.z) < bsR;
         p.heat = lerp(p.heat, inside ? 1 : 0, 1 - Math.exp(-dt * 4));
-        p.x += dt * speed * p.v * (1 - 0.45 * p.heat);
+        const step = dt * speed * p.v * (1 - 0.45 * p.heat);
+        p.x += p.dx * step; p.y += p.dy * step * (1 - p.heat); p.z += p.dz * step * (1 - p.heat);
         let rho = Math.hypot(p.y, p.z);
         const need = rhoMP(p.x / st.r0) * st.r0 * 1.06;
         if (need > 0 && rho < need) { const s = rho < 1e-3 ? 1 : need / rho; if (rho < 1e-3) { p.y = need; } else { p.y *= s; p.z *= s; } }
-        if (p.x > 62) { spawn(p, false); p.px = p.x; p.py = p.y; p.pz = p.z; }
+        if (p.x > 62 || Math.hypot(p.y, p.z) > 46) { spawn(p, false); p.px = p.x; p.py = p.y; p.pz = p.z; }
         wPos[i * 3] = p.x; wPos[i * 3 + 1] = p.y; wPos[i * 3 + 2] = p.z;
-        cc.copy(cCold).lerp(cHot, p.heat); const f = smooth(SUN_X + 2, SUN_X + 8, p.x) * (1 - smooth(48, 62, p.x));
+        // яркость: разгорается у короны, слабеет с расстоянием от Солнца, гаснет у края сцены
+        const dS = Math.hypot(p.x - SUN_X, p.y, p.z);
+        cc.copy(cCold).lerp(cHot, p.heat); const f = p.b * smooth(SUN_R, SUN_R * 1.6, dS) * (1 - smooth(48, 62, p.x)) * (0.45 + 0.55 * SUN_R * 2.2 / Math.max(SUN_R * 2.2, dS * 0.6));
         wCol[i * 3] = cc.r * f; wCol[i * 3 + 1] = cc.g * f; wCol[i * 3 + 2] = cc.b * f;
         // след тянется назад по направлению движения (после поворота у щита — вдоль него)
-        const tx = p.px ?? p.x - 1, ty = p.py ?? p.y, tz = p.pz ?? p.z, dx = p.x - tx, dy = p.y - ty, dz = p.z - tz, dl = Math.hypot(dx, dy, dz) || 1, len = 2.4 * (1 - 0.5 * p.heat);
+        const tx = p.px ?? p.x - p.dx, ty = p.py ?? p.y - p.dy, tz = p.pz ?? p.z - p.dz, dx = p.x - tx, dy = p.y - ty, dz = p.z - tz, dl = Math.hypot(dx, dy, dz) || 1, len = p.len * (st.mode === "storm" ? 1.5 : 1) * (1 - 0.5 * p.heat);
         trPos.set([p.x, p.y, p.z, p.x - (dx / dl) * len, p.y - (dy / dl) * len, p.z - (dz / dl) * len], i * 6);
-        trCol.set([cc.r * f * 0.9, cc.g * f * 0.8, cc.b * f * 0.6, 0, 0, 0], i * 6);
+        trCol.set([cc.r * f * 0.75, cc.g * f * 0.68, cc.b * f * 0.5, 0, 0, 0], i * 6);
         p.px = p.x; p.py = p.y; p.pz = p.z;
       }
       wGeo.attributes.position.needsUpdate = true; wGeo.attributes.color.needsUpdate = true;
