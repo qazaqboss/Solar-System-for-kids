@@ -762,3 +762,35 @@ function route(keepScroll = false) {
 window.addEventListener("hashchange", () => route());
 route();
 $(".nav-drop .drop")?.addEventListener("click", () => document.activeElement?.blur?.()); // закрыть меню «Спутники» после выбора
+
+// ------------------------------------------------------------ телефон горизонтально: 3D на весь экран
+{
+  const mq = window.matchMedia("(orientation: landscape) and (max-height: 540px) and (pointer: coarse)");
+  let dismissed = false;
+  const exitBtn = document.createElement("button");
+  exitBtn.className = "fs-exit"; exitBtn.type = "button"; exitBtn.textContent = "✕"; exitBtn.setAttribute("aria-label", "Выйти из полноэкранного режима");
+  exitBtn.addEventListener("click", () => { dismissed = true; apply(); });
+  function pickPlate() {
+    // схема, которая сейчас больше всего видна на экране
+    let best = null, bestA = 0;
+    document.querySelectorAll("#app .plate").forEach((p) => {
+      if (!p.querySelector(".stage")) return;
+      const r = p.getBoundingClientRect(), h = Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0));
+      if (h > bestA) { bestA = h; best = p; }
+    });
+    return best || document.querySelector("#app .plate");
+  }
+  function apply() {
+    const on = mq.matches && !dismissed;
+    document.querySelectorAll(".plate.fs").forEach((p) => p.classList.remove("fs"));
+    document.body.classList.toggle("fs3d", false);
+    exitBtn.remove();
+    if (!on) return;
+    const p = pickPlate(); if (!p) return;
+    p.classList.add("fs"); p.append(exitBtn);
+    document.body.classList.add("fs3d");
+  }
+  mq.addEventListener("change", () => { dismissed = false; setTimeout(apply, 60); });
+  window.addEventListener("hashchange", () => setTimeout(apply, 400));
+  setTimeout(apply, 400);
+}

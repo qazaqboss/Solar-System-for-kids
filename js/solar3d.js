@@ -368,7 +368,8 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
         const off = Math.max(30, Math.min(140, (sel.size / Math.max(0.01, camera.position.distanceTo(tmp))) * H * 2.2 + 26));
         let x = p.x + off, y = p.y - ih - 10;
         if (x + iw > W - 8) x = p.x - off - iw;
-        x = Math.max(8, Math.min(W - iw - 8, x)); y = Math.max(34, Math.min(H - ih - 34, y));
+        const topMin = document.body.classList.contains("fs3d") ? 74 : 34; // под кнопками планет в полноэкранном режиме
+        x = Math.max(8, Math.min(W - iw - 8, x)); y = Math.max(topMin, Math.min(H - ih - 34, y));
         if (W < 640) { x = 8; y = H - ih - 52; } // на телефоне — внизу, чтобы не закрывать объект
         info.style.transform = `translate(${x}px, ${y}px)`;
         const ax2 = x < p.x ? x + iw : x, ay2 = y + ih;
