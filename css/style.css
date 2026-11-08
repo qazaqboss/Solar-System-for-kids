@@ -720,13 +720,10 @@ svg.callouts.reveal path.on, svg.callouts.reveal circle.on { opacity: 1; }
 svg.callouts.reveal.dots circle { opacity: .85; r: 3.4px; }
 svg.callouts.reveal.dots circle.on { opacity: 1; }
 
-/* карточка-ссылка на сцену магнитного поля: «сияние» вместо фотографии */
-.magnet-promo { background:
-  radial-gradient(60% 90% at 88% 30%, rgba(80, 255, 170, .35), transparent 60%),
-  radial-gradient(40% 70% at 70% 10%, rgba(170, 90, 255, .35), transparent 60%),
-  radial-gradient(30% 60% at 0% 50%, rgba(255, 190, 90, .55), transparent 70%),
-  linear-gradient(120deg, #04060b, #0a1430 60%, #04060b); }
-.magnet-promo::before { background: linear-gradient(90deg, rgba(4,6,11,.55), rgba(4,6,11,0)); }
+/* карточка-ссылка на сцену магнитного поля: кадр из самой 3D-сцены (магнитная буря) */
+.magnet-promo { background: #04060b url("../img/magnet-promo.webp") 0 46% / cover no-repeat; min-height: 340px; }
+.magnet-promo::before { background: linear-gradient(90deg, rgba(4,6,11,.9) 0%, rgba(4,6,11,.72) 38%, rgba(4,6,11,.15) 60%, rgba(4,6,11,0) 75%); }
+@media (max-width: 640px) { .magnet-promo { min-height: 340px; background-position: 72% 45%; } .magnet-promo::before { background: linear-gradient(0deg, rgba(4,6,11,.92) 0%, rgba(4,6,11,.6) 60%, rgba(4,6,11,.2) 100%); } }
 
 /* ---- инструменты рамки: «Без подписей» и «Весь экран» */
 .plate-tools { position: absolute; right: 12px; top: 34px; z-index: 6; display: flex; gap: 6px; }
