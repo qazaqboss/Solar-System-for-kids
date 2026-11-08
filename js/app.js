@@ -87,8 +87,8 @@ function viewHome() {
     </div>
     ${plate({ fig: "Fig 1", title: "Солнечная система", hint: '<span class="only-mouse">Тяни — вращать · колесо — масштаб · нажми на планету</span><span class="only-touch">Веди пальцем вбок — вращать · коснись планеты</span>', tall: true, halo: false,
       extra: `<div class="controls"><span>Скорость времени</span><div class="btn-row" id="spd">
-        <button class="btn" data-s="2">2 сут/с</button><button class="btn" data-s="20" aria-pressed="true">20 сут/с</button><button class="btn" data-s="120">120 сут/с</button><button class="btn" data-s="0">Пауза</button></div></div>
-      <p class="caption"><b>Масштаб условный.</b> Если бы расстояния были настоящими, Нептун оказался бы в 77 раз дальше Меркурия, а планеты — меньше пикселя. Поэтому радиусы орбит сжаты корнем, а размеры планет — логарифмом. Скорости движения настоящие: за время, пока Меркурий делает 684 оборота, Нептун проходит один.</p>` })}
+        <button class="btn" data-s="2">2 сут/с</button><button class="btn" data-s="20" aria-pressed="true">20 сут/с</button><button class="btn" data-s="120">120 сут/с</button><button class="btn" data-s="0">Пауза</button></div><div class="btn-row"><button class="btn" id="tnow">Сегодня</button><a class="btn" href="#/live">● Точно сейчас</a></div></div>
+      <p class="caption"><b>Планеты стоят там, где они на самом деле сегодня</b>, и бегут по орбитам с настоящими скоростями: пока Меркурий делает 684 оборота, Нептун проходит один. Масштаб условный: если бы расстояния были настоящими, Нептун оказался бы в 77 раз дальше Меркурия, а планеты — меньше пикселя. Солнце светит по-настоящему: у каждой планеты дневная и ночная сторона. 3D-модель — «<a href="https://sketchfab.com/3d-models/solar-system-animation-b7c69a6b655b47c99f871d5ec5aee854" target="_blank" rel="noopener">Solar System animation</a>», автор Samer_Arab_S5, лицензия <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.</p>` })}
 
     <h2>Планеты и Солнце</h2>
     <p class="section-note">Нажми на карточку, чтобы открыть 3D-разрез: слои, характеристики, история и вопросы.</p>
@@ -143,16 +143,31 @@ function viewHome() {
 
   if (!GL) return;
   mountLater(async (stale) => {
-    const { mountOrrery } = await import("./orrery.js");
-    if (stale()) return;
     const stage = $(".stage");
-    current = mountOrrery({ stage, labelsEl: $(".labels", stage), planets: PLANETS, sun, onReadout: readoutSetter(app), onPick: (id) => (location.hash = `#/body/${id}`) });
+    $(".plate", app)?.classList.add("space");
+    const opts = { stage, labelsEl: $(".labels", stage), onReadout: readoutSetter(app), onPick: (id) => (location.hash = `#/body/${id}`) };
+    let fig = null;
+    try {
+      // настоящая 3D-модель с фототекстурами (models/solar-system.glb)
+      const { mountSolar } = await import("./solar3d.js");
+      if (stale()) return;
+      fig = await mountSolar({ ...opts, bodies: BY_ID });
+    } catch (e) {
+      console.warn("3D-модель не загрузилась, показываю схему", e);
+      if (stale()) return;
+      $(".plate", app)?.classList.remove("space");
+      const { mountOrrery } = await import("./orrery.js");
+      fig = mountOrrery({ ...opts, planets: PLANETS, sun });
+    }
+    if (stale()) { fig.dispose(); return; }
+    current = fig;
     figReady();
     $("#spd").addEventListener("click", (e) => {
       const b = e.target.closest("button"); if (!b) return;
       $("#spd").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b));
       current.setSpeed(+b.dataset.s);
     });
+    $("#tnow")?.addEventListener("click", () => current?.resetTime?.());
   });
 }
 
