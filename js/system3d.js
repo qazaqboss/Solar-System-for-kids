@@ -2,7 +2,7 @@
 // Радиус орбиты сжат логарифмом (от 128 тыс. до 25 млн км), наклоны и
 // направление движения настоящие: обратные спутники летят в другую сторону.
 import * as THREE from "three";
-import { createStage, cssVar, reducedMotion, liveTexture, declutter } from "./gl.js";
+import { createStage, cssVar, reducedMotion, liveTexture, declutter, earthMaps } from "./gl.js";
 import { makeTexture, makeRingTexture, mulberry } from "./textures.js";
 import { BY_ID } from "./data/bodies.js";
 
@@ -36,6 +36,41 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
   }
   const sun = new THREE.PointLight(0xffffff, 0, 0);
   scene.add(sun);
+
+  // ---- вид «Космос»: чёрное небо со звёздами, свет от настоящего Солнца (у Земли — огни городов ночью)
+  const sunDir = new THREE.Vector3(1, 0, 0);
+  const sunL = new THREE.DirectionalLight(0xfff4e6, 0); scene.add(sunL);
+  const camLights = camera.children.filter((c) => c.isLight); camLights.forEach((l) => (l.userData.i0 = l.intensity));
+  const hemi = scene.children.find((c) => c.isHemisphereLight);
+  const starPts = (() => {
+    const r = mulberry(91), n = S.mobile ? 900 : 1800, pos = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { const u = r() * 2 - 1, t = r() * Math.PI * 2, s = Math.sqrt(1 - u * u), R = 1500; pos.set([Math.cos(t) * s * R, u * R, Math.sin(t) * s * R], i * 3); }
+    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    return new THREE.Points(g, new THREE.PointsMaterial({ color: 0xc8d0e0, size: 1.5, sizeAttenuation: false, transparent: true, opacity: 0.85, depthWrite: false }));
+  })();
+  scene.add(starPts);
+  const eMaps = isEarth ? earthMaps(pl.material, { night: true, relief: 0.5 }) : null;
+  const look = { space: false };
+  function setSpace(on) {
+    look.space = on;
+    scene.background = on ? new THREE.Color("#04060b") : null;
+    starPts.visible = on; sunL.intensity = on ? 2.6 : 0;
+    camLights.forEach((l) => (l.intensity = on ? l.userData.i0 * 0.12 : l.userData.i0));
+    if (hemi) hemi.intensity = on ? 0.12 : 0.55;
+    if (eMaps) pl.material.emissiveIntensity = on ? 1.5 : 0;
+    stage.closest(".plate")?.classList.toggle("space", on);
+  }
+  setSpace(false);
+
+  // ---- магнитное поле Земли и солнечный ветер (по кнопке)
+  const magG = new THREE.Group(); magG.scale.setScalar(P_R / 2.2); magG.visible = false; scene.add(magG);
+  let magSys = null, magMode = "off";
+  function setMagnet(mode) {
+    magMode = mode; magG.visible = mode !== "off";
+    if (mode === "off") return;
+    if (!magSys) import("./magnet3d.js").then(({ buildMagnetosphere }) => { magSys = buildMagnetosphere(magG, { mobile: S.mobile, embed: true }); magSys.setMode(magMode === "off" ? "wind" : magMode); });
+    else magSys.setMode(mode);
+  }
 
   const groupColor = (g) => new THREE.Color(system.groups[g].color);
   const items = [];
@@ -174,6 +209,12 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
   S.onFrame((dt, t, idle) => {
     const rm = reducedMotion();
     state.days += dt * state.speed; // остановить можно кнопкой «Пауза»
+    // направление на Солнце поворачивается за год (как у точек Лагранжа)
+    const sa = (state.days / 365.25) * Math.PI * 2;
+    sunDir.set(Math.cos(sa), 0, -Math.sin(sa));
+    sunL.position.copy(sunDir).multiplyScalar(100);
+    eMaps?.update(camera, sunDir);
+    if (magG.visible && magSys) { magG.rotation.y = sa + Math.PI; magSys.update(dt, t); }
     pl.rotation.y += dt * 0.15;
     const labels = [];
     for (const it of items) {
@@ -218,8 +259,9 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
   return {
     setSpeed(x) { state.speed = x; },
     setFilter(g) { state.filter = g; applyFilter(); },
+    setSpace, setMagnet,
     zoom(kind) {
-      const d = kind === "inner" ? (isEarth ? 22 : 42) : (system.camD ?? 1) * (S.mobile ? 150 : 200);
+      const d = kind === "magnet" ? (S.mobile ? 120 : 95) : kind === "inner" ? (isEarth ? 22 : 42) : (system.camD ?? 1) * (S.mobile ? 150 : 200);
       const dir = camera.position.clone().normalize();
       camera.position.copy(dir.multiplyScalar(d));
       S.touch();

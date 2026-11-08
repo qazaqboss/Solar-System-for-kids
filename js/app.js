@@ -408,7 +408,9 @@ function viewSystem(id, params) {
     ${plate({ fig: `Fig ${sys.fig}`, title: `Спутники ${gen}`, hint: '<span class="only-mouse">Тяни — вращать · наведи на спутник · нажми — открыть</span><span class="only-touch">Веди пальцем вбок — вращать · коснись спутника</span>', tall: true, halo: false,
       extra: `<div class="controls"><span>Время</span><div class="btn-row" id="spd">
         ${speeds.map(([v, l]) => `<button class="btn" data-s="${v}" aria-pressed="${v === speed0}">${l}</button>`).join("")}</div>
-        <span>Вид</span><div class="btn-row"><button class="btn" id="zin">${E ? "Низкие орбиты" : "Внутренние"}</button><button class="btn" id="zout">Вся система</button></div></div>
+        <span>Вид</span><div class="btn-row"><button class="btn" id="zin">${E ? "Низкие орбиты" : "Внутренние"}</button><button class="btn" id="zout">Вся система</button></div>
+        <span>Фон</span><div class="btn-row" id="slook"><button class="btn" data-v="space">Космос</button><button class="btn" data-v="plan">Чертёж</button></div>
+        ${E ? `<span>Магнитное поле и лучи Солнца</span><div class="btn-row" id="smag"><button class="btn" data-v="off" aria-pressed="true">Выкл</button><button class="btn" data-v="wind">Солнечный ветер</button><button class="btn" data-v="storm">Магнитная буря</button></div>` : ""}</div>
       <div class="filters" id="flt"><button class="chip" data-g="" aria-pressed="${!groupG}">Все</button>${Object.entries(sys.groups).map(([k, g]) => `<button class="chip" data-g="${k}" aria-pressed="${groupG === k}"><i style="background:${g.color}"></i>${esc(g.name)} <span class="c">${counts[k]}</span></button>`).join("")}</div>
       <p class="caption">${E
         ? `<b>Шкала расстояний — логарифмическая:</b> от МКС (420 км) до телескопа «Джеймс Уэбб» (1,5 млн км) — разница в 3 500 раз. Линии — орбиты известных аппаратов, точки — облака целых группировок (${Object.values(sys.groups).filter((g) => g.real).map((g) => g.real).join("; ")}). Точек меньше, чем настоящих спутников, иначе за ними не было бы видно Землю. «Уэбб», «Евклид», SOHO и DSCOVR не обращаются вокруг Земли: они держатся в точках Лагранжа и вместе с Землёй облетают Солнце за год.`
@@ -488,6 +490,19 @@ function viewSystem(id, params) {
     });
     $("#zin").addEventListener("click", () => fig.zoom("inner"));
     $("#zout").addEventListener("click", () => fig.zoom("all"));
+    // фон: «Космос» (звёзды, свет настоящего Солнца) или «Чертёж»
+    const lookRow = $("#slook");
+    let look = "space"; try { look = localStorage.getItem("sysLook") || "space"; } catch {}
+    const setLook = (v) => { lookRow.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === v))); fig.setSpace(v === "space"); try { localStorage.setItem("sysLook", v); } catch {} };
+    setLook(look);
+    lookRow.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setLook(b.dataset.v); });
+    // как магнитное поле Земли отклоняет солнечный ветер
+    $("#smag")?.addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      $("#smag").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+      fig.setMagnet(b.dataset.v);
+      if (b.dataset.v !== "off") { lookRow.querySelector('[data-v="space"]').click(); fig.zoom("magnet"); }
+    });
   });
 }
 

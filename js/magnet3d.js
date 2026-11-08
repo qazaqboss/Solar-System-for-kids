@@ -89,14 +89,32 @@ function makeRhoOf(profile) {
   };
 }
 
+/** Отдельная сцена «Магнитное поле Земли» (страница #/magnet). */
 export function magnetosphere({ root, mobile }) {
+  const m = buildMagnetosphere(root, { mobile });
+  return {
+    cam: { dist: 70, el: 14, az: -8 },
+    controls: [{ id: "mode", type: "buttons", value: "wind", items: [["field", "Магнитное поле"], ["wind", "Солнечный ветер"], ["storm", "Магнитная буря"]] }],
+    control(id, v) { if (id === "mode") m.setMode(v); },
+    labels: m.labels,
+    update: (dt, t) => m.update(dt, t),
+    readout: m.readout,
+  };
+}
+
+/**
+ * Построить магнитосферу в группе root.
+ * embed: true — для встраивания в другую сцену (схема «Система Земли»): без своего Солнца
+ * и без своей Земли; группу нужно повернуть так, чтобы ось −x смотрела на Солнце.
+ */
+export function buildMagnetosphere(root, { mobile = false, embed = false } = {}) {
   const rnd = mulberry(77);
   const st = { mode: "wind", k: 1, kT: 1, r0: 6.2 * R, r0T: 6.2 * R, hit: 0, aur: 0.35, cme: -1, cmeT: 2.5, field: 0, fieldT: 0 };
   const sunDir = new THREE.Vector3(-1, 0, 0);
-  root.position.x = 8; // Земля чуть правее центра — слева видно Солнце
+  if (!embed) root.position.x = 8; // Земля чуть правее центра — слева видно Солнце
 
   // ---------------------------------------------------------------- Солнце
-  const sun = new THREE.Group(); sun.position.set(SUN_X, 0, 0); root.add(sun);
+  const sun = new THREE.Group(); sun.position.set(SUN_X, 0, 0); if (!embed) root.add(sun);
   sun.add(glowSprite(0xfff2c8, 9, 1), glowSprite(0xffc260, 22, 0.75), glowSprite(0xff8a30, 46, 0.35));
   // лучи: вытянутые светящиеся «спицы» вокруг Солнца
   const rayMat = new THREE.MeshBasicMaterial({ map: dot(), color: 0xffd28a, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
@@ -105,20 +123,20 @@ export function magnetosphere({ root, mobile }) {
 
   // ---------------------------------------------------------------- Земля
   const earthG = new THREE.Group(); root.add(earthG);
-  const earthMat = earthMaterial(sunDir);
+  const earthMat = embed ? { uniforms: { fade: { value: 1 } } } : earthMaterial(sunDir); // встроенной версии своя Земля не нужна
   const earth = new THREE.Mesh(new THREE.SphereGeometry(R, mobile ? 64 : 128, mobile ? 40 : 80), earthMat);
   earth.rotation.z = THREE.MathUtils.degToRad(-23.4); // наклон оси вращения
-  earth.renderOrder = 2; earthG.add(earth);
+  earth.renderOrder = 2; if (!embed) earthG.add(earth);
   // магнитная ось наклонена к оси вращения на ≈11°
   const mag = new THREE.Group(); mag.rotation.z = THREE.MathUtils.degToRad(-23.4 + 11); earthG.add(mag);
   // «магнит» внутри Земли — виден в режиме «Магнитное поле»
-  const bar = new THREE.Group(); mag.add(bar);
+  const bar = new THREE.Group(); if (!embed) mag.add(bar);
   const barN = new THREE.Mesh(new THREE.BoxGeometry(0.55, R * 0.9, 0.55), new THREE.MeshBasicMaterial({ color: 0xd8483a, transparent: true }));
   const barS = new THREE.Mesh(new THREE.BoxGeometry(0.55, R * 0.9, 0.55), new THREE.MeshBasicMaterial({ color: 0x3b6fd8, transparent: true }));
   barN.position.y = R * 0.45; barS.position.y = -R * 0.45; bar.add(barN, barS);
   // у Земли северный географический полюс — это южный магнитный: туда «смотрит» северный конец стрелки компаса
   const axisLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, -R * 1.9, 0), new THREE.Vector3(0, R * 1.9, 0)]), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }));
-  mag.add(axisLine);
+  if (!embed) mag.add(axisLine);
 
   // ---------------------------------------------------------------- силовые линии
   const Ls = [1.35, 1.8, 2.5, 3.4, 4.6, 6.0, 7.6];
@@ -270,9 +288,7 @@ export function magnetosphere({ root, mobile }) {
   setMode("wind");
 
   return {
-    cam: { dist: 70, el: 14, az: -8 },
-    controls: [{ id: "mode", type: "buttons", value: "wind", items: [["field", "Магнитное поле"], ["wind", "Солнечный ветер"], ["storm", "Магнитная буря"]] }],
-    control(id, v) { if (id === "mode") setMode(v); },
+    st, mag, setMode,
     labels: [
       { name: "Солнце и солнечный ветер", desc: "Солнце всё время выдувает поток заряженных частиц — солнечный ветер. Он мчится к Земле со скоростью около 400 км/с.", at: () => new THREE.Vector3(SUN_X + 6, 6, 0) },
       { name: "Ударная волна", desc: "Ветер летит быстрее звука в космической плазме, поэтому перед магнитным полем Земли образуется ударная волна — как перед носом катера.", at: () => new THREE.Vector3(-st.r0 * 1.32, 4, 0) },
@@ -282,7 +298,7 @@ export function magnetosphere({ root, mobile }) {
       { name: "Полярное сияние", desc: "Частицы скатываются по силовым линиям к полюсам и заставляют светиться кислород (зелёный и красный) и азот (фиолетовый) на высоте 100–300 км.", at: () => new THREE.Vector3(0, R * 1.18, 0).applyQuaternion(mag.quaternion) },
       { name: "Магнитный хвост", desc: "Ветер вытягивает поле на ночной стороне в длинный хвост — дальше орбиты Луны, на сотни радиусов Земли.", at: () => new THREE.Vector3(26, 3.2, 0) },
     ],
-    update(dt, t, S) {
+    update(dt, t) {
       const rm = reducedMotion(), sp = rm ? 0.25 : 1;
       st.k = lerp(st.k, st.kT, 1 - Math.exp(-dt * 1.5));
       st.field = lerp(st.field, st.fieldT, 1 - Math.exp(-dt * 2.2));
