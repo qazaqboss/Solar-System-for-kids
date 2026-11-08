@@ -67,6 +67,8 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
     const geo = isEarth && m.id !== "moon" ? new THREE.OctahedronGeometry(size, 0) : new THREE.SphereGeometry(size, S.mobile ? 12 : 20, S.mobile ? 8 : 14);
     const mesh = new THREE.Mesh(geo, mat);
     scene.add(mesh);
+    // «Хаббл» и «Уэбб» — маленькие настоящие 3D-модели вместо ромбика (ромбик остаётся невидимой мишенью для мыши)
+    if (m.glb) import("./glb.js").then(({ miniModel }) => miniModel(m.glb)).then((w) => { w.scale.multiplyScalar(size * 10); mesh.add(w); mat.visible = false; mesh.userData.spin = true; }).catch(() => {});
     const it = { m, r, q, line, lm, mesh, size, phase: rnd() * Math.PI * 2, baseOp: lm.opacity };
     items.push(it);
     if (m.tag || system.groups[m.group].kind === "major" || ["phoebe", "himalia", "amalthea"].includes(m.id)) {

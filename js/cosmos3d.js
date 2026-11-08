@@ -584,15 +584,56 @@ const SCENES = {
     const j1 = new THREE.Mesh(new THREE.ConeGeometry(0.45, 16, 32, 1, true), jetMat); j1.position.y = 9; j1.rotation.x = Math.PI;
     const j2 = new THREE.Mesh(new THREE.ConeGeometry(0.45, 16, 32, 1, true), jetMat); j2.position.y = -9;
     root.add(j1, j2);
+
+    // Настоящая 3D-модель чёрной дыры (models/blackhole.glb): чёрное ядро, слои изогнутого
+    // светящегося газа вокруг него и плоский аккреционный диск. Пока она грузится — видна
+    // процедурная версия; после загрузки модель её заменяет.
+    const S3 = 3.1; // масштаб модели: диск ≈ 6 единиц радиусом, как у процедурного
+    const proc = [disk, lens, photon, hole, shadow];
+    let ringMesh = null, model = null;
+    const glowMats = [];
+    const fresnel = (map, gain) => {
+      const m = new THREE.ShaderMaterial({
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.FrontSide,
+        uniforms: { map: { value: map }, uT: { value: 0 }, uGain: { value: gain } },
+        vertexShader: `varying vec3 vN; varying vec3 vV; varying vec2 vUv; void main(){ vUv = uv; vec4 mv = modelViewMatrix*vec4(position,1.0); vN = normalize(normalMatrix*normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix*mv; }`,
+        // светится край (там свет огибает дыру), середина прозрачна — сквозь неё видна чёрная «тень»
+        fragmentShader: `uniform sampler2D map; uniform float uT; uniform float uGain; varying vec3 vN; varying vec3 vV; varying vec2 vUv;
+          void main(){ float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.2);
+            vec3 c = texture2D(map, vUv + vec2(uT * 0.004, 0.0)).rgb;
+            gl_FragColor = vec4(c * f * uGain, 1.0); }`,
+      });
+      glowMats.push(m); return m;
+    };
+    import("./glb.js").then(({ loadGLB }) => loadGLB("models/blackhole.glb")).then((g) => {
+      model = g.scene; model.scale.setScalar(S3);
+      let k = 0, rt = null;
+      model.traverse((o) => { if (o.isMesh && /ring/i.test(o.material.name) && o.material.map) rt = o.material.map; });
+      const ringTex = () => rt;
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        const name = o.material.name || "", map = o.material.map;
+        if (map) { map.anisotropy = 8; map.colorSpace = THREE.SRGBColorSpace; }
+        if (/^Blackhole_core/.test(o.name)) { o.material = new THREE.MeshBasicMaterial({ color: 0x000000 }); o.renderOrder = 1; }
+        else if (o.name === "Blackhole_ring") {
+          // диск: тёмные края текстуры при сложении цветов становятся прозрачными
+          o.material = new THREE.MeshBasicMaterial({ map, color: 0xffe2b8, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+          o.renderOrder = 2; ringMesh = o;
+        } else { o.material = fresnel(map || ringTex(), /inner/i.test(name) ? 1.5 : /core/i.test(name) ? 0.55 : 1.15 - 0.04 * k++); o.renderOrder = 3; }
+      });
+      root.add(model);
+      proc.forEach((m) => (m.visible = false));
+    }).catch((e) => console.error(e));
+
     let camRef = null;
     return {
       cam: { dist: 22, el: 9, az: 0 },
       attach(cam) { camRef = cam; },
       labels: [
-        { name: "Горизонт событий", desc: "Граница невозврата. Для массы Солнца её радиус всего ≈3 км.", at: () => new THREE.Vector3(0, 0.9, 0) },
-        { name: "Фотонное кольцо", desc: "Свет здесь может облетать дыру по кругу. Его и сфотографировал Телескоп горизонта событий.", at: () => new THREE.Vector3(0, 1.52, 0).applyQuaternion(photon.quaternion) },
-        { name: "Аккреционный диск", desc: "Газ раскаляется до миллионов градусов. Сторона, летящая к нам, ярче — эффект Доплера.", at: () => new THREE.Vector3(4.6, 0, 1.5) },
-        { name: "Изогнутый свет", desc: "Дальняя сторона диска видна сверху и снизу: гравитация искривляет её свет.", at: () => new THREE.Vector3(0, 2.6, 0).applyQuaternion(lens.quaternion) },
+        { name: "Горизонт событий", desc: "Граница невозврата: чёрный шар в центре. Для массы Солнца его радиус всего ≈3 км.", at: () => new THREE.Vector3(0, model ? 0.4 * S3 : 0.9, 0) },
+        { name: "Фотонное кольцо", desc: "Свет здесь может облетать дыру по кругу. Его и сфотографировал Телескоп горизонта событий.", at: () => (model ? new THREE.Vector3(0.58 * S3, 0.12 * S3, 0) : new THREE.Vector3(0, 1.52, 0).applyQuaternion(photon.quaternion)) },
+        { name: "Аккреционный диск", desc: "Газ раскаляется до миллионов градусов и закручивается вокруг дыры, как вода в воронке.", at: () => new THREE.Vector3(4.6, 0, 1.5) },
+        { name: "Изогнутый свет", desc: "Светящиеся слои над и под чёрным шаром — это свет дальней стороны диска, который гравитация изогнула к нам.", at: () => new THREE.Vector3(0, model ? 0.56 * S3 : 2.6, 0).applyQuaternion(model ? new THREE.Quaternion() : lens.quaternion) },
         { name: "Джеты", desc: "Магнитные поля выбрасывают струи плазмы почти со скоростью света.", at: () => new THREE.Vector3(0, 10, 0) },
       ],
       update(dt, t, S) {
@@ -601,6 +642,9 @@ const SCENES = {
         disk.material.uniforms.uCam.value.copy(cam.position);
         // кольца и «тень» всегда смотрят на зрителя
         for (const m of [lens, photon, shadow]) m.quaternion.copy(cam.quaternion);
+        // газ в диске вращается, слои света переливаются
+        if (ringMesh && !reducedMotion()) ringMesh.rotation.y += dt * 0.12;
+        for (const m of glowMats) m.uniforms.uT.value = t;
       },
       readout() { return "Ничто, даже свет, не вырвется из-за горизонта событий"; },
     };
@@ -772,12 +816,23 @@ export function mountScene({ stage, svg, labelsEl, scene: id, onReadout, onLabel
     const path = document.createElementNS(NS, "path"), dotEl = document.createElementNS(NS, "circle");
     dotEl.setAttribute("r", "2.6"); svg.append(path, dotEl);
     const elx = document.createElement("div"); elx.className = "callout-label"; elx.dataset.n = String(i + 1).padStart(2, "0");
-    elx.innerHTML = `<b>${String(i + 1).padStart(2, "0")} ${L.name}</b>`;
+    elx.innerHTML = `<b>${String(i + 1).padStart(2, "0")} ${L.name}</b>${L.desc ? `<span class="d">${L.desc}</span>` : ""}`;
     elx.addEventListener("pointerenter", () => setHover(i)); elx.addEventListener("pointerleave", () => setHover(-1));
-    elx.addEventListener("click", () => setPinned(state.pinned === i ? -1 : i));
+    elx.addEventListener("click", (e) => { if (e.pointerType === "touch" || elx.classList.contains("compact")) setPinned(state.pinned === i ? -1 : i); });
     labelsEl.append(elx);
     return { path, dot: dotEl, el: elx };
   });
+  // описание по наведению: точки-якоря видны всегда, подпись с описанием — только у той, на которую навели
+  svg.classList.add("reveal", "dots"); labelsEl.classList.add("reveal");
+  let proj = [];
+  S.renderer.domElement.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "touch" || !proj.length) return;
+    const r = S.renderer.domElement.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    let best = -1, bd = 46;
+    proj.forEach((p, i) => { const d = Math.hypot(p.x - x, p.y - y); if (p.z <= 1 && d < bd) { bd = d; best = i; } });
+    setHover(best);
+  });
+  S.renderer.domElement.addEventListener("pointerleave", (e) => { if (e.pointerType !== "touch") setHover(-1); });
   const active = () => (state.hover >= 0 ? state.hover : state.pinned);
   function setHover(i) { if (state.hover !== i) { state.hover = i; onLabel?.(active()); } }
   function setPinned(i) { state.pinned = i; onLabel?.(active()); }
@@ -785,24 +840,26 @@ export function mountScene({ stage, svg, labelsEl, scene: id, onReadout, onLabel
     const W = S.width, H = S.height, compact = W < 560;
     const items = sc.labels.map((L, i) => ({ i, p: S.project(L.at()) }));
     if (items.some((x) => !isFinite(x.p.x))) return;
+    proj = items.map((x) => x.p);
     if (compact) {
       spreadBadges(items.map((x) => Object.assign(x, { x: x.p.x, y: x.p.y })));
       items.forEach((x) => { const c = callouts[x.i]; c.el.classList.add("compact"); c.path.style.opacity = c.dot.style.opacity = "0"; c.el.style.left = x.x + "px"; c.el.style.top = x.y + "px"; c.el.classList.toggle("on", active() === x.i); c.el.style.opacity = x.p.z > 1 ? 0 : 1; });
       return;
     }
-    const colX = W - 230, gap = 30, total = (items.length - 1) * gap;
+    const colX = W - 250, gap = 30, total = (items.length - 1) * gap;
     const sorted = items.slice().sort((a, b) => a.p.y - b.p.y);
     const y0 = Math.max(52, Math.min(H - 52 - total, H / 2 - total / 2));
     sorted.forEach((x, k) => {
-      const c = callouts[x.i], ly = y0 + k * gap, on = active() === x.i;
+      const on = active() === x.i, c = callouts[x.i], ly = on ? Math.min(y0 + k * gap, H - 130) : y0 + k * gap;
       c.el.classList.remove("compact"); c.path.style.opacity = c.dot.style.opacity = "";
       c.el.style.left = colX + 14 + "px"; c.el.style.top = ly - 7 + "px";
       const px = Math.min(x.p.x, colX - 40), mx = Math.max(px + 18, colX - 30);
       c.path.setAttribute("d", `M${px.toFixed(1)},${x.p.y.toFixed(1)} L${mx.toFixed(1)},${ly.toFixed(1)} L${(colX + 8).toFixed(1)},${ly.toFixed(1)}`);
       c.dot.setAttribute("cx", px.toFixed(1)); c.dot.setAttribute("cy", x.p.y.toFixed(1));
       [c.path, c.dot, c.el].forEach((e) => e.classList.toggle("on", on));
-      c.el.classList.toggle("dim", active() >= 0 && !on);
-      c.el.style.opacity = x.p.z > 1 ? 0.3 : 1;
+      c.el.classList.remove("dim");
+      c.el.style.opacity = on ? "" : 0;
+      c.dot.style.opacity = x.p.z > 1 ? 0 : "";
     });
   }
   function layoutTags() {
@@ -822,7 +879,7 @@ export function mountScene({ stage, svg, labelsEl, scene: id, onReadout, onLabel
     layout(); layoutTags();
     if (inset) sc.inset(inset.getContext("2d"), 240, 90, t);
     const a = active();
-    const txt = a >= 0 ? `${String(a + 1).padStart(2, "0")} ${sc.labels[a].name} · ${sc.labels[a].desc}` : sc.readout();
+    const txt = a >= 0 ? `${String(a + 1).padStart(2, "0")} ${sc.labels[a].name}` : sc.readout();
     if (txt !== lastTxt) { lastTxt = txt; onReadout?.(txt); }
   });
   S.start();
