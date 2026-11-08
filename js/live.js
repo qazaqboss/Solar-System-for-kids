@@ -4,6 +4,7 @@
 import { constellation, planetInfo, moon, moonPhaseName, nextMoonPhase, galilean, helio, eclToRaDec, PLANET_IDS, AU } from "./ephem.js";
 import { TLE_SNAPSHOT, SATS } from "./data/tle.js";
 import { CONTINENTS, pointInPoly } from "./textures.js";
+import { SYSTEMS } from "./data/moons.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -232,16 +233,21 @@ export function mountLive(app, { plate, GL, BY_ID, tab: tab0 = "planets", onFig 
   function showPlanets(P) {
     let sel = "earth";
     P.innerHTML = `
-      ${plate({ fig: "Fig 8 · сейчас", title: "Планеты на своих местах", hint: '<span class="only-mouse">Тяни — вращать · колесо — масштаб · нажми на имя</span><span class="only-touch">Веди пальцем вбок — вращать · коснись имени</span>', tall: true, halo: false,
-        extra: `<div class="controls"><span>Масштаб</span><div class="btn-row" id="lp-scale"><button class="btn" data-v="0" aria-pressed="true">Сжатый</button><button class="btn" data-v="1">Настоящий</button></div>
-          <span>Вид</span><div class="btn-row" id="lp-zoom"><button class="btn" data-v="1">Внутренние планеты</button><button class="btn" data-v="0" aria-pressed="true">Вся система</button></div></div>
-          <p class="caption"><b>Направления — настоящие</b>: вид сверху, с северной стороны, все планеты бегут против часовой стрелки. В режиме «Сжатый» расстояния уменьшены (иначе Меркурий слился бы с Солнцем, а Нептун улетел бы за экран); «Настоящий» — честный масштаб, где видно, как далеко внешние планеты. Синий пунктир — луч зрения с Земли на выбранную планету.</p>` })}
+      ${plate({ fig: "Fig 8 · сейчас", title: "Планеты и спутники сейчас", hint: '<span class="only-mouse">Тяни — вращать · колесо — масштаб · нажми на планету</span><span class="only-touch">Веди пальцем вбок — вращать · коснись планеты</span>', tall: true, halo: false,
+        extra: `<div class="filters" id="lp-focus"><button class="chip" data-f="" aria-pressed="true">Вся система</button>${["mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto"].map((id) => { const n = id === "earth" ? 1 : id === "pluto" ? 5 : SYSTEMS[id]?.total || 0; return `<button class="chip" data-f="${id}" aria-pressed="false">${BY_ID[id]?.name || "Плутон"}${n ? ` <span class="c">${n}</span>` : ""}</button>`; }).join("")}</div>
+          <p class="caption"><b>Всё стоит на своих настоящих местах в эту секунду</b> и движется по часам сверху: включи «1 сут/с», и планеты побегут по орбитам, а спутники закружатся вокруг планет. Нажми на планету, чтобы подлететь к ней: видны все её спутники, включая безымянные (точки). Луна и четыре галилеевых спутника Юпитера показаны точно; у остальных верны орбиты и периоды, а место на орбите условное. Расстояния сжаты: иначе Нептун был бы в 77 раз дальше Меркурия. 3D-модель — «Solar System animation», Samer_Arab_S5, CC BY 4.0.</p>` })}
       <div class="live-card" id="lp-card"></div>
       <h2>Где искать на небе</h2>
       <p class="section-note">Расстояния и видимость пересчитываются каждую секунду. Нажми на строку — планета подсветится на схеме.</p>
       <div class="table-wrap"><table class="cat live-tab"><thead><tr><th>Планета</th><th class="num">От Солнца, а. е.</th><th class="num">От Земли, млн км</th><th class="num">Свет идёт</th><th>Созвездие</th><th>Когда видно</th><th class="num">Прям. восх.</th><th class="num">Склонение</th></tr></thead><tbody></tbody></table></div>`;
     const tb = $("tbody", P), card = $("#lp-card", P);
-    function pick(id) { sel = id; fig?.select(id); paint(clock.date, true); }
+    function pick(id) {
+      if (PLANET_IDS.includes(id)) sel = id;
+      fig?.select?.(id); fig?.focus?.(id);
+      P.querySelectorAll("#lp-focus .chip").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.f === (id || ""))));
+      paint(clock.date, true);
+    }
+    $("#lp-focus", P).addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (b) pick(b.dataset.f || null); });
     tb.addEventListener("click", (e) => { const tr = e.target.closest("tr"); if (tr) pick(tr.dataset.id); });
     let lastPaint = 0;
     function paint(d, force) {
@@ -268,15 +274,22 @@ export function mountLive(app, { plate, GL, BY_ID, tab: tab0 = "planets", onFig 
     paint(clock.date, true);
     if (!GL) return;
     const seq = figSeq;
-    import("./live3d.js").then(({ mountLivePlanets }) => {
+    $(".plate", P).classList.add("space");
+    const stage = $(".stage", P);
+    const ro = (() => { const el = $("[data-readout]", P); let l = ""; return () => { const d = clock.date, t = clock.live ? "сейчас · " + fmtTime(d) : fmtDT(d); if (t !== l) el.textContent = l = t; }; })();
+    const opts = { stage, labelsEl: $(".labels", P), bodies: BY_ID, now, onPick: pick, onReadout: ro };
+    import("./solar3d.js").then(async ({ mountSolar }) => {
       if (!alive || seq !== figSeq) return;
-      const stage = $(".stage", P);
-      const ro = (() => { const el = $("[data-readout]", P); let l = ""; return (d) => { const t = clock.live ? "сейчас · " + fmtTime(d) : fmtDT(d); if (t !== l) el.textContent = l = t; }; })();
-      fig = mountLivePlanets({ stage, labelsEl: $(".labels", P), bodies: BY_ID, sun: BY_ID.sun, now, onPick: pick, onReadout: ro });
-      onFig?.(fig);
-      fig.select(sel);
-      $("#lp-scale", P).addEventListener("click", (e) => { const b = e.target.closest(".btn"); if (!b) return; $("#lp-scale", P).querySelectorAll(".btn").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); fig.setReal(b.dataset.v === "1"); });
-      $("#lp-zoom", P).addEventListener("click", (e) => { const b = e.target.closest(".btn"); if (!b) return; $("#lp-zoom", P).querySelectorAll(".btn").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); fig.setInner(b.dataset.v === "1"); });
+      let f;
+      try { f = await mountSolar({ ...opts, systems: SYSTEMS, linkTags: false }); }
+      catch (e) {
+        // модель не загрузилась — простая схема
+        console.warn(e); $(".plate", P).classList.remove("space");
+        const { mountLivePlanets } = await import("./live3d.js");
+        f = mountLivePlanets({ ...opts, sun: BY_ID.sun, onReadout: (d) => ro(d) });
+      }
+      if (!alive || seq !== figSeq) { f.dispose(); return; }
+      fig = f; onFig?.(fig);
     }).catch((e) => { console.error(e); const l = $(".loading", P); if (l) l.textContent = "Не удалось построить 3D-модель"; });
   }
 

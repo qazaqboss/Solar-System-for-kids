@@ -661,3 +661,5 @@ table.live-tab tr.sel td.name { box-shadow: inset 2px 0 0 var(--blue); }
   .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-right: -16px; padding-right: 16px; }
   .tabs .chip { flex: none; font-size: 12px; padding: 7px 11px; }
 }
+.tag.dwarf, .tag.moon-tag { color: var(--muted); font-size: 9.5px; padding: 3px 5px; }
+.tag.moon-tag:hover { color: var(--strong); }

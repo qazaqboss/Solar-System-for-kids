@@ -153,6 +153,6 @@ export function galilean(date) {
   const c1 = 0.473 * sin(2 * (u1 - u2)), c2 = 1.065 * sin(2 * (u2 - u3)), c3 = 0.165 * sin(G), c4 = 0.843 * sin(H);
   const r1 = 5.9057 - 0.0244 * cos(2 * (u1 - u2)), r2 = 9.3966 - 0.0882 * cos(2 * (u2 - u3)), r3 = 14.9883 - 0.0216 * cos(G), r4 = 26.3627 - 0.1939 * cos(H);
   u1 += c1; u2 += c2; u3 += c3; u4 += c4;
-  const mk = (id, name, u, rr) => { const X = rr * sin(u), Y = -rr * cos(u) * sin(De), behind = cos(u) > 0; return { id, name, X, Y, behind, hidden: behind && Math.abs(X) < 1 && Math.abs(Y) < 1, transit: !behind && Math.abs(X) < 1 }; };
+  const mk = (id, name, u, rr) => { const X = rr * sin(u), Y = -rr * cos(u) * sin(De), behind = cos(u) > 0; return { id, name, u, r: rr, X, Y, behind, hidden: behind && Math.abs(X) < 1 && Math.abs(Y) < 1, transit: !behind && Math.abs(X) < 1 }; };
   return { distAU: Dl, moons: [mk("io", "Ио", u1, r1), mk("europa", "Европа", u2, r2), mk("ganymede", "Ганимед", u3, r3), mk("callisto", "Каллисто", u4, r4)] };
 }
