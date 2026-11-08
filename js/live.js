@@ -267,6 +267,7 @@ export function mountLive(app, { plate, GL, BY_ID, tab: tab0 = "planets", onFig 
     return { title: m.name, sub: g ? "спутник Земли · положение точное (NORAD)" : "спутник Земли", stats, sit, link: `#/sat/${m.id}`, exact: !!g };
   }
 
+  const S_MOBILE = () => window.innerWidth < 640;
   function showPlanets(P) {
     let focus = null;                 // планета, к которой подлетели
     let obj = { sys: null, id: "earth" }; // объект, за которым следим
@@ -293,7 +294,13 @@ export function mountLive(app, { plate, GL, BY_ID, tab: tab0 = "planets", onFig 
       P.querySelectorAll("#lp-focus .chip").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.f === (id || ""))));
       choose(null, id || "earth");
     }
-    const pickMoon = (sys, id) => { if (focus !== sys) { focus = sys; fig?.focus?.(sys); P.querySelectorAll("#lp-focus .chip").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.f === sys))); } choose(sys, id); card.scrollIntoView?.({ block: "nearest", behavior: "smooth" }); };
+    const pickMoon = (sys, id) => {
+      focus = sys;
+      P.querySelectorAll("#lp-focus .chip").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.f === sys)));
+      choose(sys, id);
+      if (!fig?.focusObject?.(sys, id)) fig?.focus?.(sys); // подлёт к самому спутнику
+      fig?.selectMoon?.(id);
+    };
     $("#lp-focus", P).addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (b) pick(b.dataset.f || null); });
     tb.addEventListener("click", (e) => { const tr = e.target.closest("tr"); if (!tr) return; tr.dataset.sys ? pickMoon(tr.dataset.sys, tr.dataset.id) : pick(tr.dataset.id); });
 
@@ -314,7 +321,10 @@ export function mountLive(app, { plate, GL, BY_ID, tab: tab0 = "planets", onFig 
       card.innerHTML = `<div class="lc-head"><span class="live-dot"></span><span class="grp-dot" style="background:${color}"></span><b>${esc(r.title)}</b><span class="muted">${esc(r.sub)}</span>${obj.sys ? `<button class="btn tc-back" data-back="${obj.sys}">← ${PLANET_NAMES[obj.sys]}</button>` : ""}${link ? `<a class="go" href="${link}">${obj.sys === "earth" && obj.id !== "moon" ? "3D-модель" : "3D-разрез"} →</a>` : ""}</div>
         <div class="lc-grid">${r.stats.map(([a, b, c]) => `<div><span class="eyebrow">${esc(a)}</span><b>${esc(b)}</b><small>${esc(c || "")}</small></div>`).join("")}</div>
         <div class="sit"><span class="eyebrow">Что происходит сейчас</span><ul>${r.sit.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>`;
-      card.querySelector("[data-back]")?.addEventListener("click", (e) => choose(null, e.target.dataset.back));
+      card.querySelector("[data-back]")?.addEventListener("click", (e) => pick(e.target.dataset.back));
+      // та же информация — живой панелью прямо у объекта в 3D
+      fig?.setInfo?.(!obj.sys && !focus ? null : `<div class="oi-h"><span class="live-dot"></span><b>${esc(r.title)}</b></div><div class="oi-s">${esc(r.sub)}</div>
+        <dl>${r.stats.slice(0, S_MOBILE() ? 3 : 4).map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join("")}</dl>${S_MOBILE() ? "" : `<p>${esc(r.sit[0] || "")}</p>`}`);
       // таблица-трекер — раз в секунду
       if (!force && Math.abs(d.getTime() - lastTable) < 950 && clock.live) return;
       lastTable = d.getTime();

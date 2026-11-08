@@ -227,6 +227,26 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
   // время: с сегодняшнего дня, скорость в сутках за секунду
   let simT = Date.now(), speed = 20, hover = null, focus = null, focusT = 0;
   const camFrom = new THREE.Vector3(), tgtFrom = new THREE.Vector3(), tgtNow = new THREE.Vector3();
+  let focusObj = null; // спутник, к которому подлетели: { mesh, size }
+  // прицельное кольцо вокруг выбранного объекта
+  const reticle = (() => {
+    const cv = document.createElement("canvas"); cv.width = cv.height = 128;
+    const g = cv.getContext("2d"); g.strokeStyle = "#ffffff"; g.lineWidth = 3;
+    g.beginPath(); g.arc(64, 64, 52, 0, Math.PI * 2); g.stroke();
+    g.lineWidth = 5; for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2; g.beginPath(); g.moveTo(64 + Math.cos(a) * 56, 64 + Math.sin(a) * 56); g.lineTo(64 + Math.cos(a) * 66, 64 + Math.sin(a) * 66); g.stroke(); }
+    const t = new THREE.CanvasTexture(cv);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, color: 0x8fd8ff, transparent: true, depthTest: false, depthWrite: false }));
+    sp.renderOrder = 10; sp.visible = false; scene.add(sp); return sp;
+  })();
+  // живая панель с данными рядом с объектом
+  const info = document.createElement("div"); info.className = "obj-info"; info.hidden = true;
+  const infoLine = document.createElementNS("http://www.w3.org/2000/svg", "svg"); infoLine.setAttribute("class", "obj-info-line"); infoLine.innerHTML = "<line/><circle r='3'/>";
+  labelsEl.append(infoLine, info);
+  const objOf = (sys, id) => {
+    if (sys === "earth" && id === "moon") { const v = new THREE.Box3().setFromObject(moonMesh).getSize(new THREE.Vector3()); return { mesh: moonMesh, size: Math.max(v.x, v.y, v.z) / 2 }; }
+    for (const h of moonSys) if (h.id === sys) { const o = h.sys.list.find((x) => x.m.id === id); if (o) return { mesh: o.mesh, size: o.mesh.userData.size }; }
+    return null;
+  };
   const ang = (id, d) => { const p = helio(id, d); return Math.atan2(p.y, p.x) + Math.PI / 2; };
   const ax = new THREE.Vector3(0, 1, 0), q = new THREE.Quaternion(), tmp = new THREE.Vector3(), ew = new THREE.Vector3();
 
@@ -234,7 +254,7 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
   const reduce = reducedMotion();
   camera.position.set(0, 150, 230);
   controls.target.set(0, 0, 0);
-  controls.minDistance = 0.4; controls.maxDistance = 420;
+  controls.minDistance = 0.12; controls.maxDistance = 420;
   const want = new THREE.Vector3(0, 40, 80).multiplyScalar(S.width < S.height ? 1.45 : 1);
   let intro = 0, userMoved = false;
   controls.addEventListener("start", () => (userMoved = true));
@@ -292,11 +312,12 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
       focusT = Math.min(1, focusT + dt / 1.6);
       const e = focusT < 1 ? 1 - Math.pow(1 - focusT, 3) : 1;
       const host = focus ? items.find((i) => i.id === focus) : null;
-      if (host) host.mesh.getWorldPosition(tgtNow); else tgtNow.set(0, 0, 0);
-      const dist = host ? Math.max(host.R * 7, (host.sys?.extent || host.R * 3) * 2.6) * (S.width < S.height ? 1.5 : 1) : want.length();
+      if (focusObj) focusObj.mesh.getWorldPosition(tgtNow); else if (host) host.mesh.getWorldPosition(tgtNow); else tgtNow.set(0, 0, 0);
+      const dist = focusObj ? Math.max(focusObj.size * 16, 0.35) * (S.width < S.height ? 1.4 : 1)
+        : host ? Math.max(host.R * 7, (host.sys?.extent || host.R * 3) * 2.6) * (S.width < S.height ? 1.5 : 1) : want.length();
       if (focusT < 1) {
         controls.target.lerpVectors(tgtFrom, tgtNow, e);
-        const dir = host ? new THREE.Vector3(0.35, 0.55, 1).normalize() : want.clone().normalize();
+        const dir = focusObj ? camFrom.clone().sub(tgtFrom).normalize().add(new THREE.Vector3(0, 0.25, 0)).normalize() : host ? new THREE.Vector3(0.35, 0.55, 1).normalize() : want.clone().normalize();
         camera.position.lerpVectors(camFrom, tgtNow.clone().add(dir.multiplyScalar(dist)), e);
       } else {
         // планета едет по орбите — камера едет вместе с ней
@@ -333,6 +354,30 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
         list.push({ el: o.tag, x: p.x, y: p.y, prio: selMoon === o.m.id ? 98 : near ? (o.big ? 30 : 15) : -1, hidden: !near || p.z > 1 || p.x < 0 || p.x > W || p.y < 0 || p.y > H });
       }
     }
+    // кольцо и панель у выбранного объекта (спутник или планета)
+    const sel = focusObj ? focusObj : focus ? (() => { const h = items.find((i) => i.id === focus); return h && { mesh: h.mesh, size: h.R }; })() : null;
+    reticle.visible = !!sel;
+    if (sel) {
+      sel.mesh.getWorldPosition(tmp);
+      reticle.position.copy(tmp);
+      const pulse = 1 + 0.06 * Math.sin(t * 3);
+      reticle.scale.setScalar(sel.size * 3.4 * pulse);
+      const p = S.project(tmp);
+      if (!info.hidden && p.z < 1) {
+        const iw = info.offsetWidth || 220, ih = info.offsetHeight || 120;
+        const off = Math.max(30, Math.min(140, (sel.size / Math.max(0.01, camera.position.distanceTo(tmp))) * H * 2.2 + 26));
+        let x = p.x + off, y = p.y - ih - 10;
+        if (x + iw > W - 8) x = p.x - off - iw;
+        x = Math.max(8, Math.min(W - iw - 8, x)); y = Math.max(34, Math.min(H - ih - 34, y));
+        if (W < 640) { x = 8; y = H - ih - 52; } // на телефоне — внизу, чтобы не закрывать объект
+        info.style.transform = `translate(${x}px, ${y}px)`;
+        const ax2 = x < p.x ? x + iw : x, ay2 = y + ih;
+        const ln = infoLine.firstChild, c = infoLine.lastChild;
+        ln.setAttribute("x1", p.x); ln.setAttribute("y1", p.y); ln.setAttribute("x2", ax2); ln.setAttribute("y2", Math.min(ay2, Math.max(y, p.y)));
+        c.setAttribute("cx", p.x); c.setAttribute("cy", p.y);
+        infoLine.style.display = ""; info.style.visibility = "";
+      } else { infoLine.style.display = "none"; info.style.visibility = "hidden"; }
+    } else infoLine.style.display = "none";
     declutter(list, W);
     onReadout?.(`${Math.abs(simT - Date.now()) < DAY / 2 ? "сегодня · " : ""}${d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}`);
   });
@@ -342,7 +387,11 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
     resetTime() { simT = Date.now(); },
     /** подлететь к планете (id) или показать всю систему (null) */
     selectMoon(id) { selMoon = id; },
-    focus(id) { focus = id || ""; focusT = 0; camFrom.copy(camera.position); tgtFrom.copy(controls.target); userMoved = true; },
+    /** подлететь к спутнику и следовать за ним */
+    focusObject(sys, id) { const o = objOf(sys, id); if (!o) return false; focusObj = o; focus = sys; selMoon = id; focusT = 0; camFrom.copy(camera.position); tgtFrom.copy(controls.target); userMoved = true; return true; },
+    /** html живой панели у выбранного объекта (null — скрыть) */
+    setInfo(html) { info.hidden = !html; if (html && info.innerHTML !== html) info.innerHTML = html; },
+    focus(id) { focusObj = null; selMoon = null; focus = id || ""; focusT = 0; camFrom.copy(camera.position); tgtFrom.copy(controls.target); userMoved = true; },
     dispose: () => S.dispose(),
   };
 }
