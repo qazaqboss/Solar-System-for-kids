@@ -240,6 +240,7 @@ function bodyPage(b, { fig, crumbs, prev, next, moonRow }) {
       extra: `<div class="controls">
         <label class="ctl">Разрез <input type="range" id="cut" min="0" max="180" value="90"><output id="cutv">90°</output></label>
         <label class="ctl">Разобрать <input type="range" id="exp" min="0" max="100" value="0"><output id="expv">0%</output></label>
+        <span>Слои сверху</span><div class="btn-row" id="peel"><button class="btn" data-p="1">Снять слой</button><button class="btn" data-p="-1" disabled>Вернуть слой</button><button class="btn" data-p="0" disabled>Все слои</button></div><output id="peelv" class="peel-v"></output>
         <div class="btn-row"><button class="btn" id="apart">Разобрать на слои</button><button class="btn" id="whole">Целиком</button></div>
       </div>
       <div class="legend" id="legend">${b.layers.map((l, i) => `<span data-i="${i}"><i style="background:${l.color}"></i>${String(i + 1).padStart(2, "0")} ${esc(l.name)}</span>`).join("")}</div>
@@ -291,6 +292,7 @@ function bodyPage(b, { fig, crumbs, prev, next, moonRow }) {
     setTimeout(figReady, 0);
     const cut = $("#cut"), exp = $("#exp");
     cut.addEventListener("input", () => { fig.setCut(+cut.value); $("#cutv").textContent = cut.value + "°"; });
+    peelControls(fig, b.layers);
     exp.addEventListener("input", () => { fig.setExplode(+exp.value / 100); $("#expv").textContent = exp.value + "%"; });
     $("#apart").addEventListener("click", () => { cut.value = 90; exp.value = 100; cut.dispatchEvent(new Event("input")); exp.dispatchEvent(new Event("input")); });
     $("#whole").addEventListener("click", () => { cut.value = 0; exp.value = 0; cut.dispatchEvent(new Event("input")); exp.dispatchEvent(new Event("input")); });
@@ -656,7 +658,8 @@ function viewTopic(id) {
     ${plate({ fig: `Fig U.${i + 1}`, title: `${t.name}${body ? " · разрез" : ""}`, hint: '<span class="only-mouse">Тяни — вращать · колесо — масштаб · наведи на подпись</span><span class="only-touch">Веди пальцем вбок — вращать · коснись номера</span>',
       extra: `<div class="controls" id="uctl">${body ? `
         <label class="ctl">Разрез <input type="range" id="cut" min="0" max="180" value="90"><output id="cutv">90°</output></label>
-        <label class="ctl">Разобрать <input type="range" id="exp" min="0" max="100" value="0"><output id="expv">0%</output></label>` : ""}</div>
+        <label class="ctl">Разобрать <input type="range" id="exp" min="0" max="100" value="0"><output id="expv">0%</output></label>
+        <span>Слои сверху</span><div class="btn-row" id="peel"><button class="btn" data-p="1">Снять слой</button><button class="btn" data-p="-1" disabled>Вернуть слой</button><button class="btn" data-p="0" disabled>Все слои</button></div><output id="peelv" class="peel-v"></output>` : ""}</div>
       <div class="legend" id="legend"></div>
       <p class="caption"><b>Модель условная:</b> размеры и расстояния во Вселенной так огромны, что их сжимают, чтобы всё поместилось на экране. Цвета и форма — как у настоящих объектов.</p>` })}
     <div class="stats">${t.stats.map(([k, v, u]) => `<div class="stat"><div class="k">${esc(k)}</div><div class="v">${esc(v)} <small>${esc(u)}</small></div></div>`).join("")}</div>
@@ -689,6 +692,7 @@ function viewTopic(id) {
       legend.innerHTML = body.layers.map((l, k) => `<span data-i="${k}"><i style="background:${l.color}"></i>${String(k + 1).padStart(2, "0")} ${esc(l.name)}</span>`).join("");
       const cut = $("#cut"), exp = $("#exp");
       cut.addEventListener("input", () => { fig.setCut(+cut.value); $("#cutv").textContent = cut.value + "°"; });
+      peelControls(fig, body.layers);
       exp.addEventListener("input", () => { fig.setExplode(+exp.value / 100); $("#expv").textContent = exp.value + "%"; });
       list.addEventListener("click", (e) => { const li = e.target.closest("li"); if (li) fig.pin(+li.dataset.i); });
       legend.addEventListener("click", (e) => { const sp = e.target.closest("span[data-i]"); if (sp) fig.pin(+sp.dataset.i); });
@@ -706,6 +710,25 @@ function viewTopic(id) {
       sceneControls($("#uctl"), fig);
     }
   });
+}
+
+/** «Снять слой / Вернуть слой»: убирать слои планеты по одному, начиная с внешнего. */
+function peelControls(fig, defs) {
+  const row = $("#peel"); if (!row || !fig.setPeel) return;
+  const out = $("#peelv"), n = defs.length;
+  const sync = () => {
+    const k = fig.peel;
+    row.querySelector('[data-p="1"]').disabled = k >= n - 1;
+    row.querySelector('[data-p="-1"]').disabled = row.querySelector('[data-p="0"]').disabled = k <= 0;
+    out.textContent = k ? `сверху: ${defs[n - 1 - k].name}` : "";
+    $("#legend")?.querySelectorAll("span[data-i]").forEach((sp) => sp.classList.toggle("off", +sp.dataset.i >= n - k));
+  };
+  row.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    const d = +b.dataset.p;
+    fig.setPeel(d === 0 ? 0 : fig.peel + d); sync();
+  });
+  sync();
 }
 
 /** Кнопки и ползунки, которые объявила 3D-сцена (режимы, скорость и т. п.). */

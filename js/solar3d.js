@@ -257,7 +257,22 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
     sp.renderOrder = 10; sp.visible = false; scene.add(sp); return sp;
   })();
   // живая панель с данными рядом с объектом
+  // карточку можно свернуть до одной строки с названием (выбор запоминается)
   const info = document.createElement("div"); info.className = "obj-info"; info.hidden = true;
+  const infoBody = document.createElement("div"); infoBody.className = "oi-body";
+  const infoBtn = document.createElement("button"); infoBtn.className = "oi-min"; infoBtn.type = "button";
+  info.append(infoBtn, infoBody);
+  const setMin = (on) => {
+    info.classList.toggle("min", on);
+    infoBtn.textContent = on ? "+" : "−";
+    infoBtn.title = on ? "Развернуть карточку" : "Свернуть карточку";
+    infoBtn.setAttribute("aria-label", infoBtn.title);
+    try { localStorage.setItem("infoMin", on ? "1" : "0"); } catch {}
+  };
+  let min0 = false; try { min0 = localStorage.getItem("infoMin") === "1"; } catch {}
+  setMin(min0);
+  infoBtn.addEventListener("click", (e) => { e.stopPropagation(); setMin(!info.classList.contains("min")); });
+  infoBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
   const infoLine = document.createElementNS("http://www.w3.org/2000/svg", "svg"); infoLine.setAttribute("class", "obj-info-line"); infoLine.innerHTML = "<line/><circle r='3'/>";
   labelsEl.append(infoLine, info);
   const objOf = (sys, id) => {
@@ -409,7 +424,7 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
     /** подлететь к спутнику и следовать за ним */
     focusObject(sys, id) { const o = objOf(sys, id); if (!o) return false; focusObj = o; focus = sys; selMoon = id; focusT = 0; camFrom.copy(camera.position); tgtFrom.copy(controls.target); userMoved = true; return true; },
     /** html живой панели у выбранного объекта (null — скрыть) */
-    setInfo(html) { info.hidden = !html; if (html && info.innerHTML !== html) info.innerHTML = html; },
+    setInfo(html) { info.hidden = !html; if (html && infoBody.innerHTML !== html) infoBody.innerHTML = html; },
     focus(id) { focusObj = null; selMoon = null; focus = id || ""; focusT = 0; camFrom.copy(camera.position); tgtFrom.copy(controls.target); userMoved = true; },
     dispose: () => S.dispose(),
   };

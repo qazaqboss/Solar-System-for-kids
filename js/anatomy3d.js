@@ -167,7 +167,7 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
     const capA = new THREE.Mesh(new THREE.BufferGeometry(), capMat);
     const capB = new THREE.Mesh(new THREE.BufferGeometry(), capMat);
     [shell, capA, capB].forEach((m) => { m.userData.layer = i; if (l.gas) m.renderOrder = 2; group.add(m); });
-    return { def: l, vis: vis[i], shell, capA, capB, capMat, shellMat, cut: -1 };
+    return { def: l, vis: vis[i], shell, capA, capB, capMat, shellMat, cut: -1, peel: 0 };
   });
 
   // кольца
@@ -216,7 +216,31 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
   // клин смотрит на камеру (по азимуту)
   const WEDGE_C = AZ0 + THREE.MathUtils.degToRad(8);
 
-  const state = { cut: 0, cutT: 90, explode: 0, explodeT: 0, hover: -1, pinned: -1, spin: 0 };
+  const state = { cut: 0, cutT: 90, explode: 0, explodeT: 0, hover: -1, pinned: -1, spin: 0, peelT: 0 };
+  const peeled = (i) => i >= layers.length - state.peelT; // снятые слои — сверху, начиная с внешнего
+
+  /** Снятие слоёв: слой плавно приподнимается, растворяется и исчезает (и так же возвращается). */
+  function updatePeel(dt, rm) {
+    let changed = false;
+    layers.forEach((L, i) => {
+      const target = peeled(i) ? 1 : 0;
+      if (Math.abs(L.peel - target) < 0.001) { if (L.peel !== target) { L.peel = target; changed = true; } else return; }
+      else { L.peel = follow(L.peel, target, dt, rm ? 0.08 : 0.28); changed = true; }
+      const k = L.peel, on = k < 0.985;
+      for (const m of [L.shell, L.capA, L.capB]) {
+        m.scale.setScalar(1 + 0.22 * k);
+        m.visible = on && (m === L.shell || L.cut > 0.3);
+      }
+      for (const mt of [L.shellMat, L.capMat]) {
+        if (mt.userData.op0 === undefined) { mt.userData.op0 = mt.opacity; mt.userData.tr0 = mt.transparent; mt.userData.dw0 = mt.depthWrite; }
+        const fading = k > 0.001;
+        mt.transparent = fading || mt.userData.tr0; mt.depthWrite = fading ? false : mt.userData.dw0;
+        mt.opacity = mt.userData.op0 * (1 - k);
+        mt.needsUpdate = true;
+      }
+    });
+    return changed;
+  }
 
   function rebuild() {
     const n = layers.length;
@@ -237,7 +261,7 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
         const base = shade(L.def.color, -0.18), top = shade(L.def.color, 0.08);
         L.capA.geometry = capGeometry(L.vis.from, L.vis.to, sf, phiA, segH, base, top);
         L.capB.geometry = capGeometry(L.vis.from, L.vis.to, sf, phiB - TAU, segH, base, top);
-        L.capA.visible = L.capB.visible = true;
+        L.capA.visible = L.capB.visible = L.peel < 0.985;
       } else {
         L.capA.geometry = new THREE.BufferGeometry(); L.capB.geometry = new THREE.BufferGeometry();
         L.capA.visible = L.capB.visible = false;
@@ -275,7 +299,7 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
     const compact = W < 560; // телефон: вместо колонки подписей — номера прямо на слоях
     const items = [];
     layers.forEach((L, i) => {
-      if (state.cut < 8) { items.push({ i, hidden: true }); return; }
+      if (state.cut < 8 || peeled(i)) { items.push({ i, hidden: true }); return; }
       const rMid = (L.vis.from + L.vis.to) / 2 + (L.def.gas ? 0 : 0);
       const n1 = Math.max(1, layers.length - 1);
       const th = Math.PI / 2 - 0.05 - (i / n1) * 0.55; // внешние слои — выше
@@ -352,6 +376,9 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
       const depthTop = Math.max(0, body.radius - l.to), depthBot = body.radius - l.from;
       const txt = l.gas ? `${l.name} · до ${fmt(l.to - body.radius)} км над поверхностью` : `${String(a + 1).padStart(2, "0")} ${l.name} · глубина ${fmt(depthTop)}–${fmt(depthBot)} км`;
       onReadout?.(txt);
+    } else if (state.peelT > 0) {
+      const top = body.layers[layers.length - 1 - state.peelT];
+      onReadout?.(`снято слоёв: ${state.peelT} · сверху теперь «${top.name}»`);
     } else onReadout?.(`R = ${fmt(body.radius)} км · разрез ${Math.round(state.cut)}° · разбор ${Math.round(state.explode * 100)}%`);
   }
 
@@ -406,6 +433,7 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
     state.cut = follow(state.cut, cutTarget, dt, rm ? 0.25 : 0.45);
     state.explode = follow(state.explode, state.explodeT, dt, rm ? 0.22 : 0.4);
     if (Math.abs(pc - state.cut) > 0.02 || Math.abs(pe - state.explode) > 0.0005) { rebuild(); readout(); }
+    if (updatePeel(dt, rm)) readout();
     // планета вращается «под» неподвижным клином — двигается только поверхность
     state.spin += dt * (body.emissive ? 0.012 : 0.02) * (rm ? 0.5 : 1);
     surfTex.offset.x = state.spin;
@@ -429,6 +457,9 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
   const api = {
     setCut(deg) { state.cutT = deg; S.touch(); },
     setExplode(x) { state.explodeT = x; S.touch(); },
+    /** Снять n внешних слоёв (0 — все на месте; самый внутренний не снимается). */
+    setPeel(n) { state.peelT = Math.max(0, Math.min(layers.length - 1, n)); if (peeled(state.pinned)) setPinned(-1); S.touch(); },
+    get peel() { return state.peelT; }, layerCount: layers.length,
     get cut() { return state.cutT; }, get explode() { return state.explodeT; },
     pin: setPinned, hover: setHover,
     dispose: () => S.dispose(),
