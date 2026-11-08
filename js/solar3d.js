@@ -187,12 +187,15 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
         holder.add(pts);
         clouds.push({ pts, data });
       });
+      // аппараты в одной точке Лагранжа (L2: «Уэбб», «Евклид»; L1: SOHO, DSCOVR) — разнесены по кругу
+      // вокруг точки, как на настоящих гало-орбитах, чтобы не рисовались друг поверх друга
+      for (const sgn of [1, -1]) { const L = list.filter((o) => Math.sign(o.m.lag || 0) === sgn); L.forEach((o, k) => (o.lagAng = (k / L.length) * Math.PI * 2)); }
       host.sys = { holder, list, clouds, extent: isE ? rOf(400000) : rOf(aMax) };
       out.push(host);
     }
     return out;
   }
-  const v3 = new THREE.Vector3(), jupE = new THREE.Vector3();
+  const v3 = new THREE.Vector3(), jupE = new THREE.Vector3(), lagU = new THREE.Vector3(), lagV = new THREE.Vector3();
   const rOf_E = (host, a) => host.R * (1.08 + 3.0 * Math.log10(Math.max(350, a - 6371) / 350) / Math.log10(1.5e6 / 350));
   let selMoon = null;
   function updateMoons(d, dt) {
@@ -213,7 +216,13 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
         o.mesh.scale.setScalar(o.mesh.userData.size * (selMoon === o.m.id ? 1.5 : 1));
         if (o.isE) {
           // точки Лагранжа: L1 — к Солнцу, L2 — от Солнца; станции — по свежим орбитам NORAD
-          if (o.m.lag) { v3.copy(sunDir).multiplyScalar(o.m.lag < 0 ? o.r : -o.r).applyAxisAngle(ax, 0.12 * Math.sin(days * 2 * Math.PI / 180 + o.phase)); holder.worldToLocal(v3.add(holder.position)); o.mesh.position.copy(v3); continue; }
+          if (o.m.lag) {
+            const a = o.lagAng + (days * 2 * Math.PI) / 180; // гало-орбита: виток примерно за полгода
+            lagU.set(0, 1, 0); lagV.crossVectors(sunDir, lagU).normalize();
+            v3.copy(sunDir).multiplyScalar(o.m.lag < 0 ? o.r : -o.r)
+              .addScaledVector(lagU, Math.cos(a) * host.R * 0.45).addScaledVector(lagV, Math.sin(a) * host.R * 0.45);
+            holder.worldToLocal(v3.add(holder.position)); o.mesh.position.copy(v3); continue;
+          }
           const sp = satPos?.(o.m.id, d);
           if (sp) { v3.set(sp.x, sp.z, -sp.y).multiplyScalar(rOf_E(host, sp.alt + 6371)); holder.worldToLocal(v3.add(holder.position)); o.mesh.position.copy(v3); continue; }
         }

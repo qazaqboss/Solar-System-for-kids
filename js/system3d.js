@@ -70,6 +70,7 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
     // «Хаббл» и «Уэбб» — маленькие настоящие 3D-модели вместо ромбика (ромбик остаётся невидимой мишенью для мыши)
     if (m.glb) import("./glb.js").then(({ miniModel }) => miniModel(m.glb)).then((w) => { w.scale.multiplyScalar(size * 10); mesh.add(w); mat.visible = false; mesh.userData.spin = true; }).catch(() => {});
     const it = { m, r, q, line, lm, mesh, size, phase: rnd() * Math.PI * 2, baseOp: lm.opacity };
+    if (m.lag) { const same = system.moons.filter((x) => x.lag === m.lag); it.lagAng = (same.indexOf(m) / same.length) * Math.PI * 2; }
     items.push(it);
     if (m.tag || system.groups[m.group].kind === "major" || ["phoebe", "himalia", "amalthea"].includes(m.id)) {
       const tag = document.createElement("a");
@@ -179,7 +180,8 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
       if (it.m.lag) {
         // L1 — к Солнцу, L2 — от Солнца; направление на Солнце поворачивается за год
         const sunAng = (state.days / 365.25) * Math.PI * 2 + (it.m.lag > 0 ? Math.PI : 0);
-        const off = 0.9 * Math.cos(it.phase), offY = 0.9 * Math.sin(it.phase); // гало-орбита вокруг точки
+        // гало-орбита вокруг точки; аппараты одной точки разнесены по кругу, чтобы не слипались
+        const ga = it.lagAng + (state.days / 180) * Math.PI * 2, off = 2.6 * Math.cos(ga), offY = 2.6 * Math.sin(ga);
         tmp.set(Math.cos(sunAng) * it.r - Math.sin(sunAng) * off, offY, -Math.sin(sunAng) * it.r - Math.cos(sunAng) * off);
       } else {
         const ang = it.phase + (state.days / Math.abs(it.m.p)) * Math.PI * 2; // наклон >90° сам разворачивает движение
