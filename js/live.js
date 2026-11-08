@@ -5,6 +5,8 @@ import { constellation, planetInfo, moon, moonPhaseName, nextMoonPhase, galilean
 import { TLE_SNAPSHOT, SATS } from "./data/tle.js";
 import { CONTINENTS, pointInPoly } from "./textures.js";
 import { SYSTEMS } from "./data/moons.js";
+import { EARTH } from "./data/earth.js";
+import { planetReport, moonReport, earthMoonReport, trackRows, PLUTO, PLANET_NAMES, PLANET_GEN } from "./track.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -229,46 +231,135 @@ export function mountLive(app, { plate, GL, BY_ID, tab: tab0 = "planets", onFig 
     lastSec = -1;
   }
 
-  // ---------- планеты
+  // ---------- планеты и все спутники: слежение онлайн
+  const SYS_OF = (id) => id === "earth" ? EARTH : id === "pluto" ? PLUTO : SYSTEMS[id];
+  const ORDER = ["mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto"];
+  // положение станции (SGP4) в эклиптике: единичный вектор + высота
+  const OBL = 23.43928 * Math.PI / 180;
+  function satPos(id, d) {
+    const rec = recs[id]; if (!rec || !SATJS) return null;
+    const pv = SATJS.propagate(rec, d); const p = pv?.position; if (!p || p === true) return null;
+    const r = Math.hypot(p.x, p.y, p.z);
+    return { x: p.x / r, y: (p.y * Math.cos(OBL) + p.z * Math.sin(OBL)) / r, z: (-p.y * Math.sin(OBL) + p.z * Math.cos(OBL)) / r, alt: r - 6371 };
+  }
+  const fmtKmT = (x) => `${nf(x, 0)}`;
+  // отчёт по искусственному спутнику Земли
+  function satReport(m, d) {
+    const g = recs[m.id] ? track(m.id, d) : null;
+    const grp = EARTH.groups[m.group];
+    const alt = g ? g.alt : m.lag ? 1.5e6 : m.a - 6371;
+    const v = g ? g.speed : m.lag ? 0.3 : Math.sqrt(398600.4 / m.a);
+    const periodMin = m.lag ? null : m.p * 1440;
+    const stats = [
+      ["Высота", m.lag ? "≈1 500 000 км" : `${nf(alt, 0)} км`, m.lag ? `точка ${m.lag > 0 ? "L2 — за Землёй, от Солнца" : "L1 — между Землёй и Солнцем"}` : "над поверхностью Земли"],
+      ["Скорость", m.lag ? "≈30 км/с" : `${nf(v, 2)} км/с`, m.lag ? "вместе с Землёй вокруг Солнца" : `${nf(v * 3600, 0)} км/ч`],
+      ["Один виток", m.lag ? "1 год" : periodMin < 180 ? `${nf(periodMin, 0)} мин` : `${nf(periodMin / 60, 1)} ч`, m.lag ? "облетает Солнце" : `${nf(1440 / periodMin, 1)} витка в сутки`],
+      ["Наклон орбиты", `${nf(m.i, 1)}°`, m.i > 95 ? "солнечно-синхронная: пролетает над полюсами" : m.i < 1 ? "над экватором" : ""],
+    ];
+    if (g) { stats.unshift(["Сейчас над", `${nf(Math.abs(g.lat), 2)}° ${g.lat >= 0 ? "с." : "ю."} ш., ${nf(Math.abs(g.lon), 2)}° ${g.lon >= 0 ? "в." : "з."} д.`, overLand(g.lat, g.lon) ? "над сушей" : "над океаном"]); stats.push(["Солнце", inShadow(m.id, d) ? "в тени Земли" : "освещена", "по свежей орбите NORAD"]); }
+    const sit = [];
+    if (g) sit.push(`${m.name} сейчас ${overLand(g.lat, g.lon) ? "над сушей" : "над океаном"} на высоте ${nf(g.alt, 0)} км и мчится со скоростью ${nf(g.speed, 2)} км/с — от Москвы до Владивостока (6 400 км) долетела бы за ${nf(6400 / g.speed / 60, 0)} минут.`);
+    else if (m.lag) sit.push(`${m.name} не облетает Землю: он висит в точке Лагранжа ${m.lag > 0 ? "L2, в 1,5 млн км за Землёй, всегда на её ночной стороне" : "L1, в 1,5 млн км от Земли в сторону Солнца"}, и вместе с Землёй облетает Солнце за год.`);
+    else if (m.group === "geo") sit.push(`${m.name} висит над одной точкой экватора: он облетает Землю ровно за сутки, с той же скоростью, с какой вращается Земля. Поэтому тарелки-антенны смотрят на него не двигаясь.`);
+    else sit.push(`${m.name} летит на высоте ${nf(alt, 0)} км и делает ${nf(1440 / periodMin, 1)} витка в сутки. Место на орбите показано условно — свежие орбиты на сайте загружаются для МКС, «Тяньгуна» и «Хаббла».`);
+    if (grp) sit.push(`Группа: ${grp.name}. ${grp.desc}`);
+    if (m.year) sit.push(`Запущен в ${m.year} г.${m.by ? ` · ${m.by}` : ""}.`);
+    return { title: m.name, sub: g ? "спутник Земли · положение точное (NORAD)" : "спутник Земли", stats, sit, link: `#/sat/${m.id}`, exact: !!g };
+  }
+
   function showPlanets(P) {
-    let sel = "earth";
+    let focus = null;                 // планета, к которой подлетели
+    let obj = { sys: null, id: "earth" }; // объект, за которым следим
     P.innerHTML = `
-      ${plate({ fig: "Fig 8 · сейчас", title: "Планеты и спутники сейчас", hint: '<span class="only-mouse">Тяни — вращать · колесо — масштаб · нажми на планету</span><span class="only-touch">Веди пальцем вбок — вращать · коснись планеты</span>', tall: true, halo: false,
-        extra: `<div class="filters" id="lp-focus"><button class="chip" data-f="" aria-pressed="true">Вся система</button>${["mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto"].map((id) => { const n = id === "earth" ? 1 : id === "pluto" ? 5 : SYSTEMS[id]?.total || 0; return `<button class="chip" data-f="${id}" aria-pressed="false">${BY_ID[id]?.name || "Плутон"}${n ? ` <span class="c">${n}</span>` : ""}</button>`; }).join("")}</div>
-          <p class="caption"><b>Всё стоит на своих настоящих местах в эту секунду</b> и движется по часам сверху: включи «1 сут/с», и планеты побегут по орбитам, а спутники закружатся вокруг планет. Нажми на планету, чтобы подлететь к ней: видны все её спутники, включая безымянные (точки). Луна и четыре галилеевых спутника Юпитера показаны точно; у остальных верны орбиты и периоды, а место на орбите условное. Расстояния сжаты: иначе Нептун был бы в 77 раз дальше Меркурия. 3D-модель — «Solar System animation», Samer_Arab_S5, CC BY 4.0.</p>` })}
-      <div class="live-card" id="lp-card"></div>
-      <h2>Где искать на небе</h2>
-      <p class="section-note">Расстояния и видимость пересчитываются каждую секунду. Нажми на строку — планета подсветится на схеме.</p>
-      <div class="table-wrap"><table class="cat live-tab"><thead><tr><th>Планета</th><th class="num">От Солнца, а. е.</th><th class="num">От Земли, млн км</th><th class="num">Свет идёт</th><th>Созвездие</th><th>Когда видно</th><th class="num">Прям. восх.</th><th class="num">Склонение</th></tr></thead><tbody></tbody></table></div>`;
-    const tb = $("tbody", P), card = $("#lp-card", P);
-    function pick(id) {
-      if (PLANET_IDS.includes(id)) sel = id;
-      fig?.select?.(id); fig?.focus?.(id);
-      P.querySelectorAll("#lp-focus .chip").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.f === (id || ""))));
+      ${plate({ fig: "Fig 8 · сейчас", title: "Планеты и спутники сейчас", hint: '<span class="only-mouse">Тяни — вращать · колесо — масштаб · нажми на планету или спутник</span><span class="only-touch">Веди пальцем вбок — вращать · коснись планеты или спутника</span>', tall: true, halo: false,
+        extra: `<div class="filters" id="lp-focus"><button class="chip" data-f="" aria-pressed="true">Вся система</button>${ORDER.map((id) => { const n = id === "earth" ? EARTH.moons.filter((m) => !m.gone).length : SYS_OF(id)?.moons?.length ? SYS_OF(id).total : 0; return `<button class="chip" data-f="${id}" aria-pressed="false">${PLANET_NAMES[id]}${n ? ` <span class="c">${n}</span>` : ""}</button>`; }).join("")}</div>
+          <p class="caption"><b>Всё стоит на своих настоящих местах в эту секунду</b> и движется по часам сверху. Выбери планету — камера подлетит к её системе, а ниже появится трекер всех её спутников. Нажми на любой объект — в карточке онлайн: где он, как далеко, с какой скоростью летит и что с ним происходит. <b>Точно</b> показаны планеты, Луна, галилеевы спутники Юпитера, а также МКС, «Тяньгун» и «Хаббл» (свежие орбиты NORAD); у остальных верны орбиты и периоды, а место на орбите условное. Расстояния сжаты. 3D-модель — «Solar System animation», Samer_Arab_S5, CC BY 4.0.</p>` })}
+      <div class="live-card track-card" id="lp-card"></div>
+      <h2 id="lp-h">Где искать на небе</h2>
+      <p class="section-note" id="lp-note"></p>
+      <div class="table-wrap"><table class="cat live-tab"><thead></thead><tbody></tbody></table></div>`;
+    const tb = $("tbody", P), th = $("thead", P), card = $("#lp-card", P);
+    let tleReady = false;
+    loadTLE().then(() => { tleReady = true; paint(clock.date, true); }).catch(() => {});
+
+    function choose(sys, id) {
+      obj = { sys, id };
+      fig?.selectMoon?.(sys ? id : null);
       paint(clock.date, true);
     }
+    function pick(id) {                 // планета: подлететь и следить за ней
+      focus = id || null;
+      fig?.focus?.(focus);
+      P.querySelectorAll("#lp-focus .chip").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.f === (id || ""))));
+      choose(null, id || "earth");
+    }
+    const pickMoon = (sys, id) => { if (focus !== sys) { focus = sys; fig?.focus?.(sys); P.querySelectorAll("#lp-focus .chip").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.f === sys))); } choose(sys, id); card.scrollIntoView?.({ block: "nearest", behavior: "smooth" }); };
     $("#lp-focus", P).addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (b) pick(b.dataset.f || null); });
-    tb.addEventListener("click", (e) => { const tr = e.target.closest("tr"); if (tr) pick(tr.dataset.id); });
-    let lastPaint = 0;
+    tb.addEventListener("click", (e) => { const tr = e.target.closest("tr"); if (!tr) return; tr.dataset.sys ? pickMoon(tr.dataset.sys, tr.dataset.id) : pick(tr.dataset.id); });
+
+    function report(d) {
+      if (!obj.sys) return planetReport(obj.id, d, { ...SYSTEMS, earth: EARTH });
+      if (obj.sys === "earth") return obj.id === "moon" ? earthMoonReport(d) : satReport(EARTH.moons.find((m) => m.id === obj.id), d);
+      const m = SYS_OF(obj.sys).moons.find((x) => x.id === obj.id);
+      return moonReport(obj.sys, m, d, SYSTEMS);
+    }
+    let lastPaint = 0, lastTable = 0, headKey = "";
     function paint(d, force) {
-      if (!force && Math.abs(d.getTime() - lastPaint) < 900 && clock.live) return;
+      if (!force && Math.abs(d.getTime() - lastPaint) < 450 && clock.live) return;
       lastPaint = d.getTime();
-      const rows = PLANET_IDS.map((id) => ({ id, b: BY_ID[id], i: planetInfo(id, d) }));
-      tb.innerHTML = rows.map(({ id, b, i }) => `<tr data-id="${id}" class="${id === sel ? "sel" : ""}"><td class="name"><span class="grp-dot" style="background:${b.orbit.color}"></span>${b.name}</td>
-        <td class="num">${nf(i.rSun, 3)}</td><td class="num">${id === "earth" ? "—" : nf(i.distKm / 1e6, 1)}</td><td class="num">${id === "earth" ? "—" : fmtLight(i.lightMin)}</td>
-        <td>${id === "earth" ? "—" : i.constellation}</td><td>${id === "earth" ? "мы здесь" : `<span class="vis ${i.elong < 15 ? "no" : ""}">${i.vis}</span>`}</td>
-        <td class="num">${id === "earth" ? "—" : fmtRA(i.ra)}</td><td class="num">${id === "earth" ? "—" : fmtDec(i.dec)}</td></tr>`).join("");
-      const r = rows.find((x) => x.id === sel), b = r.b, i = r.i;
-      card.innerHTML = `<div class="lc-head"><span class="grp-dot" style="background:${b.orbit.color}"></span><b>${b.name}</b><a class="go" href="#/body/${b.id}">3D-разрез →</a></div>
-        <div class="lc-grid">
-          <div><span class="eyebrow">До Солнца</span><b>${nf(i.rSun * AU / 1e6, 1)} млн км</b><small>${nf(i.rSun, 3)} а. е.</small></div>
-          ${sel === "earth" ? `<div><span class="eyebrow">Скорость по орбите</span><b>${nf(29.78 * Math.sqrt(2 / i.rSun - 1 / i.helio.a), 2)} км/с</b><small>≈ ${nf(29.78 * 3600 * Math.sqrt(2 / i.rSun - 1 / i.helio.a), 0)} км/ч</small></div>
-             <div><span class="eyebrow">Эклиптическая долгота</span><b>${nf((Math.atan2(i.helio.y, i.helio.x) * 180 / Math.PI + 360) % 360, 1)}°</b><small>от точки весны</small></div>`
-          : `<div><span class="eyebrow">До Земли</span><b>${nf(i.distKm / 1e6, 1)} млн км</b><small>${nf(i.dist, 3)} а. е.</small></div>
-             <div><span class="eyebrow">Свет от неё к нам</span><b>${fmtLight(i.lightMin)}</b><small>столько летит её свет</small></div>
-             <div><span class="eyebrow">Угол от Солнца</span><b>${nf(i.elong, 1)}°</b><small>${esc(i.vis)}</small></div>
-             <div><span class="eyebrow">Созвездие</span><b>${i.constellation}</b><small>α ${fmtRA(i.ra)} · δ ${fmtDec(i.dec)}</small></div>`}
-        </div>`;
+      // карточка выбранного объекта — каждые полсекунды
+      const r = report(d);
+      const color = obj.sys ? (SYS_OF(obj.sys)?.groups?.[SYS_OF(obj.sys).moons.find((m) => m.id === obj.id)?.group]?.color || "#9aa2b1") : BY_ID[obj.id]?.orbit?.color || "#9b9086";
+      const link = obj.sys ? r.link : BY_ID[obj.id] ? `#/body/${obj.id}` : null;
+      card.innerHTML = `<div class="lc-head"><span class="live-dot"></span><span class="grp-dot" style="background:${color}"></span><b>${esc(r.title)}</b><span class="muted">${esc(r.sub)}</span>${obj.sys ? `<button class="btn tc-back" data-back="${obj.sys}">← ${PLANET_NAMES[obj.sys]}</button>` : ""}${link ? `<a class="go" href="${link}">${obj.sys === "earth" && obj.id !== "moon" ? "3D-модель" : "3D-разрез"} →</a>` : ""}</div>
+        <div class="lc-grid">${r.stats.map(([a, b, c]) => `<div><span class="eyebrow">${esc(a)}</span><b>${esc(b)}</b><small>${esc(c || "")}</small></div>`).join("")}</div>
+        <div class="sit"><span class="eyebrow">Что происходит сейчас</span><ul>${r.sit.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>`;
+      card.querySelector("[data-back]")?.addEventListener("click", (e) => choose(null, e.target.dataset.back));
+      // таблица-трекер — раз в секунду
+      if (!force && Math.abs(d.getTime() - lastTable) < 950 && clock.live) return;
+      lastTable = d.getTime();
+      const sys = focus && SYS_OF(focus)?.moons?.length ? focus : null;
+      if (!sys) {
+        if (headKey !== "planets") {
+          headKey = "planets";
+          $("#lp-h", P).textContent = focus ? `${PLANET_NAMES[focus]}: спутников нет` : "Все планеты сейчас";
+          $("#lp-note", P).textContent = "Расстояния, скорость сближения и видимость пересчитываются каждую секунду. Нажми на строку — камера подлетит к планете.";
+          th.innerHTML = `<tr><th>Планета</th><th class="num">От Солнца, млн км</th><th class="num">От Земли, км</th><th class="num">Сближение</th><th class="num">Свет идёт</th><th>Созвездие</th><th>Когда видно</th></tr>`;
+        }
+        tb.innerHTML = [...PLANET_IDS, "pluto"].map((id) => {
+          const i = planetInfo(id, d), j = id === "earth" ? null : planetInfo(id, new Date(d.getTime() + 60000)), rate = j ? (j.distKm - i.distKm) / 60 : 0;
+          return `<tr data-id="${id}" class="${!obj.sys && obj.id === id ? "sel" : ""}"><td class="name"><span class="grp-dot" style="background:${BY_ID[id]?.orbit?.color || "#9b9086"}"></span>${PLANET_NAMES[id]}</td>
+          <td class="num">${nf(i.rSun * AU / 1e6, 1)}</td><td class="num">${id === "earth" ? "—" : fmtKmT(i.distKm)}</td>
+          <td class="num">${id === "earth" ? "—" : `<span class="${rate < 0 ? "near" : "far"}">${rate < 0 ? "−" : "+"}${nf(Math.abs(rate), 2)} км/с</span>`}</td>
+          <td class="num">${id === "earth" ? "—" : fmtLight(i.lightMin)}</td><td>${id === "earth" ? "—" : i.constellation}</td><td>${id === "earth" ? "мы здесь" : `<span class="vis ${i.elong < 15 ? "no" : ""}">${i.vis}</span>`}</td></tr>`;
+        }).join("");
+        return;
+      }
+      const isE = sys === "earth";
+      if (headKey !== sys) {
+        headKey = sys;
+        const sy = SYS_OF(sys);
+        $("#lp-h", P).textContent = isE ? "Трекер: Луна и спутники Земли" : `Трекер: спутники ${PLANET_GEN[sys]}`;
+        $("#lp-note", P).textContent = isE ? "МКС, «Тяньгун» и «Хаббл» — по свежим орбитам NORAD, остальные — по своим орбитам. Нажми на строку — объект подсветится в 3D, а в карточке появятся его данные онлайн." : `Все ${sy.named} спутников с именами${sy.total > sy.named ? ` (ещё ${sy.total - sy.named} безымянных — точками в 3D)` : ""}. ${sys === "jupiter" ? "Ио, Европа, Ганимед и Каллисто — точные положения. " : ""}Нажми на строку — спутник подсветится, в карточке — его данные онлайн.`;
+        th.innerHTML = isE ? `<tr><th>Объект</th><th>Группа</th><th class="num">Высота</th><th class="num">Скорость</th><th class="num">Виток</th><th>Где сейчас</th></tr>`
+          : `<tr><th>Спутник</th><th>Группа</th><th class="num">От планеты, км</th><th class="num">От Земли, млн км</th><th class="num">Скорость</th><th class="num">Виток</th><th>Вид с Земли</th></tr>`;
+      }
+      if (isE) {
+        const mo = moon(d);
+        const rows = [`<tr data-sys="earth" data-id="moon" class="${obj.id === "moon" ? "sel" : ""}"><td class="name"><span class="grp-dot" style="background:#8a8986"></span>Луна <span class="exact">точно</span></td><td>Естественный спутник</td><td class="num">${fmtKmT(mo.distKm - 6371)} км</td><td class="num">1,02 км/с</td><td class="num">27,3 сут</td><td>${moonPhaseName(mo.age).toLowerCase()}</td></tr>`];
+        for (const m of EARTH.moons.filter((x) => !x.gone && x.id !== "moon")) {
+          const g = tleReady && recs[m.id] ? track(m.id, d) : null;
+          const alt = g ? g.alt : m.lag ? 1.5e6 : m.a - 6371, v = g ? g.speed : m.lag ? null : Math.sqrt(398600.4 / m.a);
+          const where = g ? `${nf(Math.abs(g.lat), 1)}° ${g.lat >= 0 ? "с" : "ю"}. ш., ${nf(Math.abs(g.lon), 1)}° ${g.lon >= 0 ? "в" : "з"}. д. · ${overLand(g.lat, g.lon) ? "суша" : "океан"}` : m.lag ? `точка ${m.lag > 0 ? "L2" : "L1"}` : m.group === "geo" ? "над экватором" : "на орбите";
+          rows.push(`<tr data-sys="earth" data-id="${m.id}" class="${obj.id === m.id ? "sel" : ""}"><td class="name"><span class="grp-dot" style="background:${EARTH.groups[m.group].color}"></span>${esc(m.name)}${g ? ' <span class="exact">онлайн</span>' : ""}</td><td>${esc(EARTH.groups[m.group].name)}</td>
+            <td class="num">${fmtKmT(alt)} км</td><td class="num">${v ? nf(v, 2) + " км/с" : "—"}</td><td class="num">${m.lag ? "1 год" : m.p * 1440 < 180 ? nf(m.p * 1440, 0) + " мин" : nf(m.p * 24, 1) + " ч"}</td><td>${where}</td></tr>`);
+        }
+        tb.innerHTML = rows.join("");
+        return;
+      }
+      tb.innerHTML = trackRows(sys, d, SYSTEMS).sort((a, b) => a.fromPlanet - b.fromPlanet).map((r) => `<tr data-sys="${sys}" data-id="${r.id}" class="${obj.sys === sys && obj.id === r.id ? "sel" : ""}">
+        <td class="name"><span class="grp-dot" style="background:${r.color || "#9aa2b1"}"></span>${esc(r.name)}${r.exact ? ' <span class="exact">точно</span>' : ""}${r.retro ? ' <span class="retro">↺</span>' : ""}</td><td>${esc(r.group)}</td>
+        <td class="num">${fmtKmT(r.fromPlanet)}</td><td class="num">${nf(r.fromEarth / 1e6, 3)}</td><td class="num">${nf(r.v, 2)} км/с</td><td class="num">${nf(r.lap * 100, 0)}%</td><td>${r.view}</td></tr>`).join("");
     }
     panelTick = (d) => paint(d);
     paint(clock.date, true);
@@ -281,7 +372,7 @@ export function mountLive(app, { plate, GL, BY_ID, tab: tab0 = "planets", onFig 
     import("./solar3d.js").then(async ({ mountSolar }) => {
       if (!alive || seq !== figSeq) return;
       let f;
-      try { f = await mountSolar({ ...opts, systems: SYSTEMS, linkTags: false }); }
+      try { f = await mountSolar({ ...opts, systems: { ...SYSTEMS, earth: EARTH }, linkTags: false, onMoonPick: pickMoon, satPos }); }
       catch (e) {
         // модель не загрузилась — простая схема
         console.warn(e); $(".plate", P).classList.remove("space");

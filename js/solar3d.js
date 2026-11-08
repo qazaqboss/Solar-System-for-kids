@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "./vendor/GLTFLoader.js";
 import { createStage, follow, reducedMotion, declutter } from "./gl.js";
 import { mulberry } from "./textures.js";
+import { phaseOf, PLUTO } from "./track.js";
 import { helio, moon as moonPos, galilean } from "./ephem.js";
 
 const IDS = ["mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto"];
@@ -12,17 +13,10 @@ const KEY = { earth: "erath" }; // так названы узлы в исход�
 const NAMES = { pluto: "Плутон" };
 const DAY = 86400000;
 // наклон оси планет (спутники обращаются в плоскости экватора — у Урана «на боку»)
-const TILT = { mars: 25.2, jupiter: 3.1, saturn: 26.7, uranus: 97.8, neptune: 28.3, pluto: 119.6 };
-const GM = { mars: 4.2828e13, jupiter: 1.26687e17, saturn: 3.7931e16, uranus: 5.794e15, neptune: 6.8365e15, pluto: 8.7e11 };
+const TILT = { earth: 23.44, mars: 25.2, jupiter: 3.1, saturn: 26.7, uranus: 97.8, neptune: 28.3, pluto: 119.6 };
+const GM = { earth: 3.986e14, mars: 4.2828e13, jupiter: 1.26687e17, saturn: 3.7931e16, uranus: 5.794e15, neptune: 6.8365e15, pluto: 8.7e11 };
 const MOON_COL = { io: "#e8c547", europa: "#d9c9a8", ganymede: "#a9a39a", callisto: "#7a6a58", titan: "#e0a85a", enceladus: "#f4f7fb", mimas: "#c9c9c9", tethys: "#dcdcdc", dione: "#cfcfcf", rhea: "#bdbdbd", iapetus: "#8f7a5e", miranda: "#b8b8b8", ariel: "#cfcfcf", umbriel: "#7b7b7b", titania: "#b9aa9c", oberon: "#a29486", triton: "#d8c9c0", nereid: "#9a9a9a", proteus: "#6f6f6f", phobos: "#8a7564", deimos: "#a08f7d", charon: "#9b9086" };
-// спутники Плутона (в каталоге сайта их нет — у Плутона нет своей страницы системы)
-const PLUTO = { total: 5, named: 5, groups: {}, moons: [
-  { id: "charon", name: "Харон", r: 606, a: 19591, p: 6.387, i: 0, link: false },
-  { id: "styx", name: "Стикс", r: 8, a: 42656, p: 20.16, i: 0.8, link: false },
-  { id: "nix", name: "Никта", r: 25, a: 48694, p: 24.85, i: 0.1, link: false },
-  { id: "kerberos", name: "Кербер", r: 6, a: 57783, p: 32.17, i: 0.4, link: false },
-  { id: "hydra", name: "Гидра", r: 25, a: 64738, p: 38.2, i: 0.2, link: false },
-] };
+
 
 function glowSprite(c1, c2, size = 256) {
   const cv = document.createElement("canvas"); cv.width = cv.height = size;
@@ -52,7 +46,7 @@ function poleOf(geo) {
   return uv.getY(best) > 0.9 ? v : new THREE.Vector3(0, 1, 0);
 }
 
-export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, url = "models/solar-system.glb", now = null, systems = null, linkTags = true, onMoonPick = null }) {
+export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, url = "models/solar-system.glb", now = null, systems = null, linkTags = true, onMoonPick = null, satPos = null }) {
   const S = createStage(stage, { fov: 34, far: 5000, fitWidth: true });
   const { scene, camera, controls, renderer } = S;
   // свет — только от Солнца (день и ночь на планетах), слабая подсветка ночной стороны
@@ -76,6 +70,7 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
     if (m.name === "Material") { o.material = orbitMat; o.renderOrder = 1; return; }
     if (m.name === "material") { o.material = new THREE.MeshBasicMaterial({ map: m.map || m.emissiveMap }); o.userData.id = "sun"; return; }
     m.side = THREE.FrontSide; m.roughness = 0.92; m.metalness = 0;
+    if (m.name === "pluto") m.color = new THREE.Color("#e3c4a4"); // в модели у Плутона текстура Меркурия — делаем её теплее
     if (m.name === "saturn_ring") { m.side = THREE.DoubleSide; m.depthWrite = false; m.opacity = 0.85; }
     if (m.map) m.map.anisotropy = 4;
   });
@@ -114,67 +109,83 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
   items.forEach((it) => { it.mesh.geometry.computeBoundingSphere(); it.R = it.mesh.getWorldScale(new THREE.Vector3()).x * it.mesh.geometry.boundingSphere.radius; });
 
   // ---------------------------------------------------------- спутники всех планет
+  const moonPick = [];
   const moonSys = systems ? buildMoons() : [];
+  // Луна дальше от Земли, чтобы между ними поместились искусственные спутники
+  if (systems && moonC) {
+    const e = items.find((i) => i.id === "earth"), k = (e.R * (1.08 + 3.0 * Math.log10((384400 - 6371) / 350) / Math.log10(1.5e6 / 350))) / Math.abs(moonC.scale.x);
+    moonC.scale.multiplyScalar(k); moonR?.scale.multiplyScalar(k);
+    moonC.children[0]?.scale.multiplyScalar(1 / k * 1.25);
+  }
   function buildMoons() {
     const out = [];
     const sys = { ...systems, pluto: PLUTO };
     for (const [pid, sy] of Object.entries(sys)) {
-      const host = items.find((i) => i.id === pid); if (!host || pid === "earth") continue;
-      const named = sy.moons.filter((m) => !m.gone);
+      const host = items.find((i) => i.id === pid); if (!host || !sy?.moons) continue;
+      const isE = pid === "earth";
+      const named = sy.moons.filter((m) => !m.gone && m.id !== "moon"); // Луна Земли — из самой модели
       const groupsA = Object.values(sy.groups || {}).flatMap((g) => g.a || []);
       const aMin = Math.min(...named.map((m) => m.a)), aMax = Math.max(...named.map((m) => m.a), ...groupsA);
-      const rOf = (a) => host.R * (1.45 + 2.3 * (aMax > aMin ? Math.log(a / aMin) / Math.log(aMax / aMin) : 0));
+      // у Земли — от МКС (400 км) до «Уэбба» (1,5 млн км) по высоте над поверхностью, логарифмом
+      const rOf = isE ? (a) => host.R * (1.08 + 3.0 * Math.log10(Math.max(350, a - 6371) / 350) / Math.log10(1.5e6 / 350))
+        : (a) => host.R * (1.45 + 2.3 * (aMax > aMin ? Math.log(a / aMin) / Math.log(aMax / aMin) : 0));
       const holder = new THREE.Group(); holder.rotation.z = THREE.MathUtils.degToRad(TILT[pid] || 0); scene.add(holder);
       const rnd = mulberry(pid.length * 977 + 13);
       const list = named.map((m) => {
         const inc = THREE.MathUtils.degToRad(m.i > 90 ? 180 - m.i : m.i), node = rnd() * Math.PI * 2;
         const basis = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(Math.cos(node), 0, Math.sin(node)), inc);
         const big = m.r > 150;
-        const size = host.R * (0.035 + 0.11 * Math.sqrt(Math.min(1, m.r / 2634)));
+        const size = isE ? host.R * (m.group === "lagrange" ? 0.05 : 0.035) : host.R * (0.035 + 0.11 * Math.sqrt(Math.min(1, (m.r || 10) / 2634)));
         const color = MOON_COL[m.id] || (sy.groups?.[m.group]?.color ?? "#b9bfca");
         const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, big ? 20 : 8, big ? 14 : 6), new THREE.MeshStandardMaterial({ color, roughness: 0.95, emissive: new THREE.Color(color), emissiveIntensity: big ? 0.08 : 0.35 }));
-        mesh.scale.setScalar(size); mesh.userData.moon = m.id;
+        mesh.scale.setScalar(size); mesh.userData.moon = m.id; mesh.userData.sys = pid; mesh.userData.size = size;
+        moonPick.push(mesh);
         holder.add(mesh);
         let line = null;
-        if (big || named.length < 4) {
+        if ((big || named.length < 4) && !isE) {
           const pts = []; for (let k = 0; k <= 96; k++) { const a = (k / 96) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a), 0, Math.sin(a)).multiplyScalar(rOf(m.a)).applyQuaternion(basis)); }
           line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xb9d6ff, transparent: true, opacity: 0.12, depthWrite: false }));
           holder.add(line);
         }
         let tag = null;
-        if (big || m.r > 40 || named.length < 6) {
-          tag = document.createElement("a"); tag.className = "tag moon-tag"; tag.textContent = m.name; tag.href = m.link === false ? "#/live" : `#/moon/${m.id}`;
-          if (m.link === false) tag.removeAttribute("href");
+        if (big || isE || m.r > 40 || named.length < 6) {
+          tag = document.createElement("a"); tag.className = "tag moon-tag"; tag.textContent = m.name;
+          if (linkTags && m.link !== false) tag.href = isE ? `#/sat/${m.id}` : `#/moon/${m.id}`;
+          if (!linkTags) tag.addEventListener("click", (e) => { e.preventDefault(); onMoonPick?.(pid, m.id); });
           labelsEl.appendChild(tag);
         }
-        return { m, r: rOf(m.a), basis, mesh, line, tag, phase: rnd() * Math.PI * 2, dir: m.retro ? -1 : 1, big };
+        return { m, r: rOf(m.a), basis, mesh, line, tag, phase: phaseOf(m.id), dir: m.retro ? -1 : 1, big: big || isE, isE };
       });
       // безымянные — облако точек по семействам
       const clouds = [];
-      const irr = Object.entries(sy.groups || {}).filter(([, g]) => g.share);
+      const irr = Object.entries(sy.groups || {}).filter(([, g]) => g.share || g.cloud);
       const unnamed = (sy.total || 0) - (sy.named || 0), shareSum = irr.reduce((a, [, g]) => a + g.share, 0);
       let left = unnamed;
       irr.forEach(([, g], gi) => {
-        const n = gi === irr.length - 1 ? left : Math.round((unnamed * g.share) / shareSum); left -= n;
+        let n;
+        if (g.cloud) n = Math.round(g.cloud * (S.mobile ? 0.5 : 1)); // группировки Земли (Starlink и др.)
+        else { n = gi === irr.length - 1 ? left : Math.round((unnamed * g.share) / shareSum); left -= n; }
         if (n <= 0) return;
         const data = [];
         for (let k = 0; k < n; k++) {
           const a = g.a[0] + rnd() * (g.a[1] - g.a[0]);
           const i0 = g.incs ? g.incs[Math.floor(rnd() * g.incs.length)] : g.inc[0] + rnd() * (g.inc[1] - g.inc[0]);
           const inc = THREE.MathUtils.degToRad(i0 > 90 ? 180 - i0 : i0), node = rnd() * Math.PI * 2;
-          data.push({ r: rOf(a), basis: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(Math.cos(node), 0, Math.sin(node)), inc), phase: rnd() * 6.283, p: (sy.gmP ? sy.gmP(a) : 2 * Math.PI * Math.sqrt(Math.pow(a * 1000, 3) / (GM[pid] || 1.27e17)) / 86400), dir: i0 > 90 ? -1 : 1 });
+          data.push({ r: rOf(a), basis: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(Math.cos(node), 0, Math.sin(node)), inc), phase: rnd() * 6.283, p: (sy.gmP ? sy.gmP(a) : 2 * Math.PI * Math.sqrt(Math.pow(a * 1000, 3) / (GM[pid] || 1.27e17)) / 86400 * (isE ? 1 : 1)), dir: i0 > 90 ? -1 : 1 });
         }
         const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
         const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: new THREE.Color(g.color), size: 2, sizeAttenuation: false, transparent: true, opacity: 0.8, depthWrite: false }));
         holder.add(pts);
         clouds.push({ pts, data });
       });
-      host.sys = { holder, list, clouds, extent: rOf(aMax) };
+      host.sys = { holder, list, clouds, extent: isE ? rOf(400000) : rOf(aMax) };
       out.push(host);
     }
     return out;
   }
   const v3 = new THREE.Vector3(), jupE = new THREE.Vector3();
+  const rOf_E = (host, a) => host.R * (1.08 + 3.0 * Math.log10(Math.max(350, a - 6371) / 350) / Math.log10(1.5e6 / 350));
+  let selMoon = null;
   function updateMoons(d, dt) {
     const days = (d.getTime() - 946728000000) / DAY;
     let gal = null;
@@ -187,8 +198,16 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
         const J = helio("jupiter", d), E = helio("earth", d);
         jupE.set(J.x - E.x, 0, -(J.y - E.y)).normalize();
       }
+      const sunDir = host.id === "earth" ? holder.position.clone().negate().normalize() : null;
       for (const o of list) {
         let a;
+        o.mesh.scale.setScalar(o.mesh.userData.size * (selMoon === o.m.id ? 1.5 : 1));
+        if (o.isE) {
+          // точки Лагранжа: L1 — к Солнцу, L2 — от Солнца; станции — по свежим орбитам NORAD
+          if (o.m.lag) { v3.copy(sunDir).multiplyScalar(o.m.lag < 0 ? o.r : -o.r).applyAxisAngle(ax, 0.12 * Math.sin(days * 2 * Math.PI / 180 + o.phase)); holder.worldToLocal(v3.add(holder.position)); o.mesh.position.copy(v3); continue; }
+          const sp = satPos?.(o.m.id, d);
+          if (sp) { v3.set(sp.x, sp.z, -sp.y).multiplyScalar(rOf_E(host, sp.alt + 6371)); holder.worldToLocal(v3.add(holder.position)); o.mesh.position.copy(v3); continue; }
+        }
         const g = gal && gal.moons.find((x) => x.id === o.m.id);
         if (g) a = Math.atan2(-jupE.z, jupE.x) + (g.u * Math.PI) / 180; // точные положения галилеевых спутников
         else a = o.phase + o.dir * (2 * Math.PI * days) / Math.abs(o.m.p);
@@ -215,7 +234,7 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
   const reduce = reducedMotion();
   camera.position.set(0, 150, 230);
   controls.target.set(0, 0, 0);
-  controls.minDistance = 10; controls.maxDistance = 420;
+  controls.minDistance = 0.4; controls.maxDistance = 420;
   const want = new THREE.Vector3(0, 40, 80).multiplyScalar(S.width < S.height ? 1.45 : 1);
   let intro = 0, userMoved = false;
   controls.addEventListener("start", () => (userMoved = true));
@@ -229,8 +248,11 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
     const r = renderer.domElement.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
-    const hit = ray.intersectObjects(pick, false)[0];
-    const id = hit?.object.userData.id;
+    const hit = ray.intersectObjects([...pick, ...moonPick, ...(moonMesh ? [moonMesh] : [])], false)[0];
+    const o = hit?.object;
+    if (o?.userData.moon) { onMoonPick?.(o.userData.sys, o.userData.moon); return; }
+    if (o === moonMesh && onMoonPick) { onMoonPick("earth", "moon"); return; }
+    const id = o?.userData.id;
     if (id && bodies[id]) onPick?.(id);
   });
   renderer.domElement.addEventListener("pointermove", (e) => {
@@ -307,7 +329,8 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
         o.mesh.getWorldPosition(tmp); tmp.y += o.mesh.scale.x * 1.6;
         const p = S.project(tmp);
         o.tag.style.left = p.x + "px"; o.tag.style.top = p.y + "px";
-        list.push({ el: o.tag, x: p.x, y: p.y, prio: near ? (o.big ? 30 : 15) : -1, hidden: !near || p.z > 1 || p.x < 0 || p.x > W || p.y < 0 || p.y > H });
+        o.tag.classList.toggle("on", selMoon === o.m.id);
+        list.push({ el: o.tag, x: p.x, y: p.y, prio: selMoon === o.m.id ? 98 : near ? (o.big ? 30 : 15) : -1, hidden: !near || p.z > 1 || p.x < 0 || p.x > W || p.y < 0 || p.y > H });
       }
     }
     declutter(list, W);
@@ -318,6 +341,7 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
     setSpeed(x) { speed = x; },
     resetTime() { simT = Date.now(); },
     /** подлететь к планете (id) или показать всю систему (null) */
+    selectMoon(id) { selMoon = id; },
     focus(id) { focus = id || ""; focusT = 0; camFrom.copy(camera.position); tgtFrom.copy(controls.target); userMoved = true; },
     dispose: () => S.dispose(),
   };

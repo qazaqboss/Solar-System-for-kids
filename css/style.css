@@ -663,3 +663,9 @@ table.live-tab tr.sel td.name { box-shadow: inset 2px 0 0 var(--blue); }
 }
 .tag.dwarf, .tag.moon-tag { color: var(--muted); font-size: 9.5px; padding: 3px 5px; }
 .tag.moon-tag:hover { color: var(--strong); }
+.track-card .lc-head .live-dot { margin-right: 0; }
+.track-card .tc-back { padding: 5px 9px; font-size: 11.5px; }
+.track-card .sit { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--faint); }
+.track-card .sit ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 5px; font-size: 14px; color: var(--text); }
+table.live-tab .near { color: #30a46c; } table.live-tab .far { color: var(--muted); }
+table.live-tab .exact { font: 500 9.5px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: #30a46c; box-shadow: 0 0 0 1px currentColor; padding: 1px 4px; margin-left: 4px; }
