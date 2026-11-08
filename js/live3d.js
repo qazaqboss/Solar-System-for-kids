@@ -1,6 +1,6 @@
 // 3D-сцены страницы «Сейчас»: планеты на своих настоящих местах и Земля с МКС над ней.
 import * as THREE from "three";
-import { createStage, follow, cssVar, liveTexture, declutter } from "./gl.js";
+import { createStage, follow, cssVar, liveTexture, declutter, earthMaps } from "./gl.js";
 import { makeRingTexture } from "./textures.js";
 import { helio, orbitPoints, PLANET_IDS } from "./ephem.js";
 
@@ -149,6 +149,8 @@ export function mountLiveEarth({ stage, labelsEl, earth, sats, now, track, sunGe
 
   const globe = new THREE.Mesh(new THREE.SphereGeometry(1, S.mobile ? 64 : 96, S.mobile ? 40 : 64), new THREE.MeshStandardMaterial({ map: liveTexture(earth.look, 2048, 1024, { mobileScale: 0.5 }), roughness: 0.85, metalness: 0 }));
   scene.add(globe);
+  const eMaps = earthMaps(globe.material, { night: true });
+  S.onFrame(() => eMaps.update(camera, sunL.position.clone().normalize()));
   const atmo = new THREE.Mesh(new THREE.SphereGeometry(1.025, 48, 32), new THREE.MeshBasicMaterial({ color: 0x7fb4ff, transparent: true, opacity: 0.12, side: THREE.BackSide, depthWrite: false }));
   scene.add(atmo);
   // сетка: экватор и нулевой меридиан

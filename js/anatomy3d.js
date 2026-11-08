@@ -1,7 +1,7 @@
 // «Анатомический» 3D-разрез тела: вложенные оболочки-слои, вырезанный клин,
 // ступенчатая «разборка» и выноски с подписями, как в фигурах Anatomy.
 import * as THREE from "three";
-import { createStage, follow, reducedMotion, cssVar, liveTexture, isMobile, spreadBadges } from "./gl.js";
+import { createStage, follow, reducedMotion, cssVar, liveTexture, isMobile, spreadBadges, earthMaps } from "./gl.js";
 import { makeTexture, makeRingTexture, makeNoise, hex } from "./textures.js";
 
 const TAU = Math.PI * 2;
@@ -151,6 +151,7 @@ export function mountAnatomy({ stage, svg, labelsEl, body, onReadout, onLayer })
       shellMat = body.emissive
         ? new THREE.MeshBasicMaterial({ map: surfTex, side: THREE.DoubleSide })
         : new THREE.MeshStandardMaterial({ map: surfTex, roughness: 0.92, metalness: 0, side: THREE.DoubleSide });
+      if (body.id === "earth" && !body.emissive) earthMaps(shellMat, { relief: 0.8 }); // рельеф гор и блеск океана
     } else {
       const t = new THREE.CanvasTexture(layerTexture(l.color, 300 + i));
       t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping;

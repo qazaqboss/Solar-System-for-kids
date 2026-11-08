@@ -49,6 +49,10 @@ function plate({ fig, title, hint, tall = false, extra = "", halo = true }) {
       <span class="plate-corner tr">${title}</span>
       <span class="plate-corner bl">${hint}</span>
       <span class="plate-corner br" data-readout>—</span>
+      <div class="plate-tools">
+        <button class="pt-btn" data-tool="clean" aria-pressed="false" title="Скрыть подписи и карточки — смотреть только модель"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span>Без подписей</span></button>
+        <button class="pt-btn" data-tool="fs" aria-pressed="false" title="На весь экран (Esc — выйти)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span>Весь экран</span></button>
+      </div>
       <div class="stage${tall ? " tall" : ""}">
         ${halo ? '<div class="halo"></div>' : ""}
         <svg class="callouts"></svg>
@@ -59,6 +63,38 @@ function plate({ fig, title, hint, tall = false, extra = "", halo = true }) {
     ${extra}
   </figure>`;
 }
+// ---- инструменты рамки: «без подписей» и «на весь экран» (работают на любой 3D-фигуре)
+const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+function setFs(plateEl, on) {
+  const req = plateEl.requestFullscreen || plateEl.webkitRequestFullscreen;
+  if (on) {
+    // iPhone не умеет показывать на весь экран отдельный элемент — растягиваем рамку сами
+    if (req) req.call(plateEl).catch?.(() => plateEl.classList.add("fake-fs"));
+    else plateEl.classList.add("fake-fs");
+  } else {
+    if (fsEl()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    plateEl.classList.remove("fake-fs");
+  }
+  syncFs();
+}
+function syncFs() {
+  document.querySelectorAll(".plate").forEach((p) => {
+    const on = fsEl() === p || p.classList.contains("fake-fs");
+    p.classList.toggle("is-fs", on);
+    p.querySelector('[data-tool="fs"]')?.setAttribute("aria-pressed", String(on));
+  });
+  document.documentElement.classList.toggle("has-fake-fs", !!document.querySelector(".plate.fake-fs"));
+}
+document.addEventListener("fullscreenchange", syncFs);
+document.addEventListener("webkitfullscreenchange", syncFs);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.querySelectorAll(".plate.fake-fs").forEach((p) => setFs(p, false)); });
+document.addEventListener("click", (e) => {
+  const b = e.target.closest(".pt-btn"); if (!b) return;
+  const pl = b.closest(".plate");
+  if (b.dataset.tool === "clean") { const on = !pl.classList.contains("clean"); pl.classList.toggle("clean", on); b.setAttribute("aria-pressed", String(on)); }
+  else setFs(pl, !(fsEl() === pl || pl.classList.contains("fake-fs")));
+});
+
 const readoutSetter = (root) => { const el = $("[data-readout]", root); let last = ""; return (t) => { if (t !== last) { last = t; el.textContent = t; } }; };
 
 let routeSeq = 0;
@@ -108,6 +144,12 @@ function viewHome() {
       <span class="eyebrow">Новый раздел · полный гид</span>
       <b>Вселенная</b>
       <span>Большой взрыв, галактики, рождение и смерть звёзд, нейтронные звёзды, чёрные дыры, экзопланеты — 3D-модели к каждой теме и снимки «Джеймса Уэбба»</span>
+      <i>Открыть →</i>
+    </a>
+    <a class="u-promo magnet-promo" href="#/magnet">
+      <span class="eyebrow">3D-сцена · анимация</span>
+      <b>Магнитный щит Земли</b>
+      <span>Солнечный ветер бьёт по магнитному полю, огибает его, а у полюсов зажигает полярные сияния. Включи «Магнитную бурю» — и Солнце выбросит облако плазмы</span>
       <i>Открыть →</i>
     </a>
     <h2>Как читать фигуры</h2>
@@ -313,7 +355,7 @@ function viewBody(id) {
   if (b.type === "moon") return viewMoon(id);
   let moonRow = "";
   if (b.system) moonRow = `<h2>Спутники</h2><p class="section-note">${SYSTEMS[b.system].note}</p><a class="btn" href="#/system/${b.system}">Открыть систему ${SYSTEMS[b.system].gen} в 3D →</a>`;
-  if (b.id === "earth") moonRow = `<h2>Спутники Земли</h2><p class="section-note">${esc(EARTH.note)}</p><p><a class="btn" href="#/system/earth">Открыть систему Земли в 3D →</a></p><div class="grid" style="max-width:260px;margin-top:16px" id="mrow"></div>`;
+  if (b.id === "earth") moonRow = `<a class="u-promo magnet-promo" href="#/magnet" style="margin:40px 0 0"><span class="eyebrow">Новая 3D-сцена</span><b>Магнитное поле Земли →</b><span>Как невидимый магнитный щит защищает Землю от частиц с Солнца, откуда берутся полярные сияния и что такое магнитная буря</span></a><h2>Спутники Земли</h2><p class="section-note">${esc(EARTH.note)}</p><p><a class="btn" href="#/system/earth">Открыть систему Земли в 3D →</a></p><div class="grid" style="max-width:260px;margin-top:16px" id="mrow"></div>`;
   bodyPage(b, { fig, crumbs: `<a href="#/">Главная</a> / ${b.type === "star" ? "Звезда" : "Планеты"} / ${b.name}`, prev, next, moonRow });
   if (b.id === "earth") $("#mrow").append(cardFor(BY_ID.moon, 1));
 }
@@ -646,8 +688,13 @@ function viewTopic(id) {
       list.addEventListener("mouseover", (e) => { const li = e.target.closest("li[data-i]"); if (li) fig.hover(+li.dataset.i); });
       list.addEventListener("mouseleave", () => fig.hover(-1));
       legend.addEventListener("click", (e) => { const sp = e.target.closest("span[data-i]"); if (sp) fig.pin(+sp.dataset.i); });
-      // элементы управления сцены
-      const box = $("#uctl");
+      sceneControls($("#uctl"), fig);
+    }
+  });
+}
+
+/** Кнопки и ползунки, которые объявила 3D-сцена (режимы, скорость и т. п.). */
+function sceneControls(box, fig) {
       fig.controls.forEach((c) => {
         if (c.type === "buttons") {
           const row = document.createElement("div"); row.className = "btn-row";
@@ -662,7 +709,55 @@ function viewTopic(id) {
           box.append(lab);
         }
       });
-    }
+}
+
+// ------------------------------------------------------------ МАГНИТНОЕ ПОЛЕ ЗЕМЛИ
+function viewMagnet() {
+  const stats = [["Сила поля у поверхности", "25–65", "мкТл"], ["Магнитопауза днём", "≈10", "радиусов Земли"], ["Хвост ночью", "сотни", "радиусов Земли"], ["Солнечный ветер", "300–800", "км/с"], ["Наклон магнитной оси", "≈11", "°"], ["Высота сияний", "100–300", "км"]];
+  app.innerHTML = `
+  <section class="view">
+    <div class="crumbs"><a href="#/">Главная</a> / <a href="#/body/earth">Земля</a> / Магнитное поле</div>
+    <div class="hero" style="padding-top:18px">
+      <div class="eyebrow">Земля · магнитосфера · солнечный ветер</div>
+      <h1>Магнитное поле Земли</h1>
+      <p class="lede">Земля — огромный магнит. Его невидимое поле — щит, о который разбивается солнечный ветер. Без него ветер постепенно сдувал бы атмосферу, как у Марса.</p>
+    </div>
+    ${plate({ fig: "Fig 2.3·M", title: "Магнитосфера Земли", hint: '<span class="only-mouse">Тяни — вращать · колесо — масштаб · наведи на точку</span><span class="only-touch">Веди пальцем — вращать · коснись номера</span>', tall: true, halo: false,
+      extra: `<div class="controls" id="uctl"><span>Режим</span></div><div class="legend" id="legend"></div>
+      <p class="caption"><b>Как смотреть.</b> «Магнитное поле» — чистый магнит Земли: линии от полюса к полюсу, внутри — «магнит». «Солнечный ветер» — частицы с Солнца обтекают щит, часть из них скатывается к полюсам и зажигает сияния. «Магнитная буря» — Солнце выбрасывает облако плазмы, оно ударяет и прижимает щит. Расстояния сильно сжаты: на самом деле Солнце в 23 500 раз дальше, чем радиус Земли.</p>` })}
+    <div class="stats">${stats.map(([k, v, u]) => `<div class="stat"><div class="k">${esc(k)}</div><div class="v">${esc(v)} <small>${esc(u)}</small></div></div>`).join("")}</div>
+    <div class="two-col">
+      <div><h2>Что на модели</h2><ol class="layers-list" id="parts"></ol></div>
+      <div><h2>Коротко</h2>
+        <p>Во внешнем ядре Земли, на глубине 2 900–5 100 км, течёт жидкое железо. Оно вращается вместе с планетой и работает как динамо — создаёт магнитное поле.</p>
+        <p>Северный конец стрелки компаса показывает на север, потому что там находится <b>южный</b> магнитный полюс Земли: противоположные полюса магнитов притягиваются.</p>
+        <p>Магнитные полюса медленно гуляют, а примерно раз в несколько сотен тысяч лет поле меняет направление на противоположное. Последний раз это было 780 тысяч лет назад.</p>
+      </div>
+    </div>
+    <h2>Знаешь ли ты?</h2>
+    <div class="facts">${[
+      "Птицы, морские черепахи и киты чувствуют магнитное поле и находят по нему дорогу.",
+      "В 1859 году во время самой сильной известной бури сияния видели даже на Кубе, а телеграфные провода искрили.",
+      "Сияние на Земле и на Юпитере устроено одинаково — но у Юпитера оно в сотни раз мощнее.",
+      "У Марса почти нет общего магнитного поля, поэтому солнечный ветер за миллиарды лет унёс большую часть его атмосферы.",
+    ].map((f, k) => `<div class="fact"><span class="eyebrow">Факт ${k + 1}</span>${esc(f)}</div>`).join("")}</div>
+    <nav class="pager"><a href="#/body/earth"><span class="eyebrow">← Назад</span><b>Земля</b></a><a class="next" href="#/live"><span class="eyebrow">Дальше →</span><b>Где всё сейчас</b></a></nav>
+  </section>`;
+  if (!GL) return;
+  const list = $("#parts"), legend = $("#legend");
+  mountLater(async (stale) => {
+    const { mountScene } = await import("./cosmos3d.js"); if (stale()) return;
+    const stage = $(".stage");
+    const fig = mountScene({ stage, svg: $("svg.callouts", stage), labelsEl: $(".labels", stage), scene: "magnetosphere", onReadout: readoutSetter(app),
+      onLabel: (k) => { list.querySelectorAll("li").forEach((li) => li.classList.toggle("on", +li.dataset.i === k)); legend.querySelectorAll("span").forEach((x) => x.classList.toggle("on", +x.dataset.i === k)); } });
+    current = fig; setTimeout(figReady, 0);
+    list.innerHTML = fig.labels.map((l, k) => `<li data-i="${k}"><span class="n">${String(k + 1).padStart(2, "0")}</span><span class="sw" style="background:var(--strong)"></span><div><b>${esc(l.name)}</b><p>${esc(l.desc)}</p></div></li>`).join("");
+    legend.innerHTML = fig.labels.map((l, k) => `<span data-i="${k}"><i style="background:var(--strong)"></i>${String(k + 1).padStart(2, "0")} ${esc(l.name)}</span>`).join("");
+    list.addEventListener("mouseover", (e) => { const li = e.target.closest("li[data-i]"); if (li) fig.hover(+li.dataset.i); });
+    list.addEventListener("mouseleave", () => fig.hover(-1));
+    legend.addEventListener("mouseover", (e) => { const sp = e.target.closest("span[data-i]"); if (sp) fig.hover(+sp.dataset.i); });
+    legend.addEventListener("mouseleave", () => fig.hover(-1));
+    sceneControls($("#uctl"), fig);
   });
 }
 
@@ -758,6 +853,7 @@ function route(keepScroll = false) {
   else if (parts[0] === "sat") { viewSat(parts[1]); mark("#/system/earth"); }
   else if (parts[0] === "system") { viewSystem(parts[1], params); mark(`#/system/${parts[1]}`); }
   else if (parts[0] === "live") { viewLive(params); mark("#/live"); }
+  else if (parts[0] === "magnet") { viewMagnet(); mark("#/planets"); }
   else if (parts[0] === "history") { viewHistory(); mark("#/history"); }
   else if (parts[0] === "universe") { parts[1] ? viewTopic(parts[1]) : viewUniverse(); mark("#/universe"); }
   else if (parts[0] === "glossary") { viewGlossary(params); mark("#/universe"); }

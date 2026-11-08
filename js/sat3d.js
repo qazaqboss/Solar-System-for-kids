@@ -4,7 +4,7 @@
 // солнечные элементы с шинами, рёбра радиаторов, решётчатые фермы.
 // Два режима: «Космос» (чёрное небо, Земля, солнечный свет) и «Чертёж».
 import * as THREE from "three";
-import { createStage, follow, reducedMotion, liveTexture, spreadBadges } from "./gl.js";
+import { createStage, follow, reducedMotion, liveTexture, spreadBadges, earthMaps } from "./gl.js";
 import { RoomEnvironment } from "./vendor/RoomEnvironment.js";
 import { RoundedBoxGeometry } from "./vendor/RoundedBoxGeometry.js";
 import { mulberry } from "./textures.js";
@@ -390,7 +390,8 @@ function makeEarth(sat) {
   const g = new THREE.Group();
   const R = 60;
   const tex = liveTexture(BY_ID.earth.look, 1024, 512, { mobileScale: 0.5 });
-  const earth = new THREE.Mesh(new THREE.SphereGeometry(R, 96, 64), new THREE.MeshStandardMaterial({ map: tex, color: "#c9ccd2", roughness: 0.95, metalness: 0 }));
+  const earth = new THREE.Mesh(new THREE.SphereGeometry(R, 96, 64), new THREE.MeshStandardMaterial({ map: tex, color: "#d6d9de", roughness: 0.95, metalness: 0 }));
+  g.userData.maps = earthMaps(earth.material, { night: true, relief: 0.5 });
   earth.rotation.set(0.3, 2.2, 0.1);
   // атмосфера — светящийся голубой край
   const atmo = new THREE.Mesh(new THREE.SphereGeometry(R * 1.025, 96, 64), new THREE.ShaderMaterial({
@@ -644,6 +645,7 @@ export function mountSat({ stage, svg, labelsEl, sat, onReadout, onPart, space =
       if (camera.position.distanceTo(fly.pos) < rad * 0.002) fly = null;
     }
     earth.userData.earth.rotation.y += dt * 0.004; // Земля медленно поворачивается под аппаратом
+    earth.userData.maps.update(camera, sun.position.clone().normalize());
     if (!rm && idle > 4 && !fly && state.pinned < 0) root.rotation.y += dt * 0.1;
     layout();
   });

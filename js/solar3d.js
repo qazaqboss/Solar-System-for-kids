@@ -73,10 +73,10 @@ export async function mountSolar({ stage, labelsEl, bodies, onReadout, onPick, u
     if (m.name === "pluto") m.color = new THREE.Color("#e3c4a4"); // в модели у Плутона текстура Меркурия — делаем её теплее
     if (m.name === "saturn_ring") { m.side = THREE.DoubleSide; m.depthWrite = false; m.opacity = 0.85; }
     if (m.map) m.map.anisotropy = 8;
-    // Юпитер: подробная карта «Хаббла» (OPAL, heic1522a) вместо маленькой текстуры из модели
-    if (m.name === "jupiter") {
-      new THREE.TextureLoader().load(photoUrl("jupiter", 1024), (t) => {
-        t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+    // Юпитер (карта «Хаббла» OPAL), Земля и Луна (присланные модели) — подробные карты вместо маленьких из модели
+    if (m.name === "jupiter" || m.name === "earth" || m.name === "moon") {
+      new THREE.TextureLoader().load(photoUrl(m.name, 1024), (t) => {
+        t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; // в этой модели карты хранятся «вверх ногами», поэтому flipY оставляем по умолчанию
         m.map?.dispose(); m.map = t; m.needsUpdate = true;
       });
     }

@@ -226,3 +226,26 @@ export function spreadBadges(items, minD = 25, iters = 6) {
   }
   return items;
 }
+
+/**
+ * Подробные карты Земли (запечены из присланной 3D-модели): рельеф (normal map),
+ * блеск океана (roughness map) и — по желанию — огни городов на ночной стороне.
+ * Для огней нужно каждый кадр вызывать update(camera, направлениеНаСолнце).
+ */
+export function earthMaps(mat, { night = false, relief = 0.7 } = {}) {
+  const sm = isMobile();
+  const L = (n, color) => { const t = new THREE.TextureLoader().load(`img/tex/${n}${sm ? "-s" : ""}.webp`); t.anisotropy = 8; if (color) t.colorSpace = THREE.SRGBColorSpace; return t; };
+  mat.normalMap = L("earth-normal"); mat.normalScale = new THREE.Vector2(relief, relief);
+  mat.roughnessMap = L("earth-spec"); mat.roughness = 1; mat.metalness = 0;
+  const sunView = { value: new THREE.Vector3(1, 0, 0) };
+  if (night) {
+    mat.emissiveMap = L("earth-night", true); mat.emissive = new THREE.Color("#ffdcaa"); mat.emissiveIntensity = 1.5;
+    mat.onBeforeCompile = (sh) => {
+      sh.uniforms.uSunView = sunView;
+      sh.fragmentShader = "uniform vec3 uSunView;\n" + sh.fragmentShader.replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+        totalEmissiveRadiance *= 1.0 - smoothstep(-0.18, 0.18, dot(normalize(vNormal), uSunView));`);
+    };
+  }
+  mat.needsUpdate = true;
+  return { update(camera, sunWorldDir) { sunView.value.copy(sunWorldDir).transformDirection(camera.matrixWorldInverse); } };
+}

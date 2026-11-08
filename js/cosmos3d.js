@@ -3,6 +3,7 @@
 import * as THREE from "three";
 import { createStage, follow, reducedMotion, spreadBadges } from "./gl.js";
 import { mulberry } from "./textures.js";
+import { magnetosphere } from "./magnet3d.js";
 
 const TAU = Math.PI * 2;
 const ease = (x) => (x < 0 ? 0 : x > 1 ? 1 : x * x * (3 - 2 * x));
@@ -788,6 +789,8 @@ const SCENES = {
     };
   },
 };
+
+SCENES.magnetosphere = magnetosphere;
 
 /** Смонтировать 3D-сцену темы. */
 export function mountScene({ stage, svg, labelsEl, scene: id, onReadout, onLabel }) {

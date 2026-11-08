@@ -719,3 +719,34 @@ svg.callouts.reveal path.on, svg.callouts.reveal circle.on { opacity: 1; }
 /* в сценах «Вселенной» точки-якоря видны всегда — на них наводят курсор */
 svg.callouts.reveal.dots circle { opacity: .85; r: 3.4px; }
 svg.callouts.reveal.dots circle.on { opacity: 1; }
+
+/* карточка-ссылка на сцену магнитного поля: «сияние» вместо фотографии */
+.magnet-promo { background:
+  radial-gradient(60% 90% at 88% 30%, rgba(80, 255, 170, .35), transparent 60%),
+  radial-gradient(40% 70% at 70% 10%, rgba(170, 90, 255, .35), transparent 60%),
+  radial-gradient(30% 60% at 0% 50%, rgba(255, 190, 90, .55), transparent 70%),
+  linear-gradient(120deg, #04060b, #0a1430 60%, #04060b); }
+.magnet-promo::before { background: linear-gradient(90deg, rgba(4,6,11,.55), rgba(4,6,11,0)); }
+
+/* ---- инструменты рамки: «Без подписей» и «Весь экран» */
+.plate-tools { position: absolute; right: 12px; top: 34px; z-index: 6; display: flex; gap: 6px; }
+.pt-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; border: 0; cursor: pointer;
+  background: var(--card); color: var(--strong); box-shadow: 0 0 0 1px var(--faint); font: 500 10px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase;
+  opacity: .78; transition: opacity .2s, box-shadow .2s; }
+.pt-btn:hover, .pt-btn[aria-pressed="true"] { opacity: 1; box-shadow: 0 0 0 1px var(--strong); }
+.pt-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.plate.space .pt-btn { background: rgba(4, 6, 11, .75); color: #eef1f6; box-shadow: 0 0 0 1px rgba(238, 241, 246, .3); }
+.plate.space .pt-btn:hover, .plate.space .pt-btn[aria-pressed="true"] { box-shadow: 0 0 0 1px #eef1f6; }
+@media (max-width: 640px) { .pt-btn span { display: none; } .pt-btn { width: 32px; justify-content: center; padding: 0; } .plate-tools { top: 30px; right: 10px; } }
+
+/* чистый вид: только модель — без подписей, выносок, карточек объекта и подсказок */
+.plate.clean .labels, .plate.clean svg.callouts, .plate.clean .obj-info, .plate.clean .obj-info-line,
+.plate.clean .plate-corner.bl, .plate.clean .cos-inset { opacity: 0 !important; pointer-events: none !important; visibility: hidden; }
+
+/* на весь экран */
+.plate.is-fs { width: 100vw; height: 100vh; height: 100dvh; max-width: none; margin: 0; padding: 44px 14px 40px; display: flex; flex-direction: column; background: var(--card); }
+.plate.space.is-fs { background: #04060b; }
+.plate.is-fs .stage { flex: 1; aspect-ratio: auto !important; min-height: 0; height: auto; }
+.plate.fake-fs { position: fixed; inset: 0; z-index: 1000; }
+html.has-fake-fs, html.has-fake-fs body { overflow: hidden; }
+.plate:fullscreen { width: 100vw; height: 100vh; }
