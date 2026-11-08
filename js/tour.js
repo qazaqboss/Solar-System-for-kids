@@ -169,11 +169,22 @@ function startFallback() {
 function tick(t, dur) {
   const s = STEPS[state.i];
   s.at.forEach(([at, kind, v], k) => { if (t >= at && !state.fired.has(k)) { state.fired.add(k); fire(kind, v); } });
-  // субтитры: подсветка слов по ходу речи (длина слова ≈ время произнесения)
+  // субтитры: подсветка слов по ходу речи. Внутри фразы длина слова ≈ время произнесения,
+  // а начало и конец каждой фразы известны точно (s.seg) — подсветка не убегает вперёд в паузах.
   const p = Math.min(1, t / Math.max(0.1, dur));
-  const total = state.words.reduce((a, w) => a + w.len, 0);
-  let acc = 0;
-  state.words.forEach((w) => { acc += w.len; w.el.classList.toggle("said", acc / total <= p + 0.02); });
+  const seg = s.seg && s.seg.length === (state.words.at(-1)?.ph ?? -1) + 1 ? s.seg : null;
+  if (seg) {
+    seg.forEach(([a, b], k) => {
+      const ws = state.words.filter((w) => w.ph === k), tot = ws.reduce((x, w) => x + w.len, 0);
+      const q = Math.min(1, Math.max(0, (t - a) / Math.max(0.1, b - a)));
+      let acc = 0;
+      ws.forEach((w) => { acc += w.len; w.el.classList.toggle("said", t >= a && acc / tot <= q + 0.04); });
+    });
+  } else {
+    const total = state.words.reduce((a, w) => a + w.len, 0);
+    let acc = 0;
+    state.words.forEach((w) => { acc += w.len; w.el.classList.toggle("said", acc / total <= p + 0.02); });
+  }
   // субтитры сами прокручиваются к текущей фразе
   const sub = dock.querySelector(".tour-sub");
   const lastSaid = [...sub.querySelectorAll("span.said")].pop();
@@ -197,6 +208,9 @@ function render() {
     sub.scrollTop = 0;
     sub.innerHTML = s.text.split(/(\s+)/).map((w) => (w.trim() ? `<span>${esc(w)}</span>` : w)).join("");
     state.words = [...sub.querySelectorAll("span")].map((el) => ({ el, len: el.textContent.length + 2 }));
+    // слова → фразы (границы фраз в аудио известны точно: s.seg)
+    let ph = 0;
+    state.words.forEach((w) => { w.ph = ph; if (/[.!?]$/.test(w.el.textContent)) ph++; });
   }
   dock.querySelectorAll(".tour-progress i").forEach((el, k) => {
     el.classList.toggle("done", k < state.i);
