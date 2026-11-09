@@ -261,7 +261,13 @@ export function mountSystem({ stage, labelsEl, system, planet, onReadout, onPick
     setFilter(g) { state.filter = g; applyFilter(); },
     setSpace, setMagnet,
     zoom(kind) {
-      const d = kind === "magnet" ? (S.mobile ? 120 : 95) : kind === "inner" ? (isEarth ? 22 : 42) : (system.camD ?? 1) * (S.mobile ? 150 : 200);
+      if (kind === "magnet") {
+        // вид сбоку от линии «Солнце — Земля»: в кадре и Солнце, и щит, и хвост поля
+        const d = S.mobile ? 190 : 140, side = new THREE.Vector3().crossVectors(sunDir, new THREE.Vector3(0, 1, 0)).normalize();
+        camera.position.copy(side.multiplyScalar(d * 0.93)).add(new THREE.Vector3(0, d * 0.36, 0)).addScaledVector(sunDir, d * 0.12);
+        S.touch(); return;
+      }
+      const d = kind === "inner" ? (isEarth ? 22 : 42) : (system.camD ?? 1) * (S.mobile ? 150 : 200);
       const dir = camera.position.clone().normalize();
       camera.position.copy(dir.multiplyScalar(d));
       S.touch();

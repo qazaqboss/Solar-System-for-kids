@@ -117,7 +117,7 @@ export function buildMagnetosphere(root, { mobile = false, embed = false } = {})
   if (!embed) root.position.x = 13; // Земля чуть правее центра — слева видно Солнце
 
   // ---------------------------------------------------------------- Солнце
-  const sun = new THREE.Group(); sun.position.set(SUN_X, 0, 0); if (!embed) root.add(sun);
+  const sun = new THREE.Group(); sun.position.set(SUN_X, 0, 0); root.add(sun); // и на схеме «Система Земли» — откуда летит ветер
   // мягкое свечение, пока модель грузится (и под ней)
   sun.add(glowSprite(0xffc260, SUN_R * 3.2, 0.55), glowSprite(0xff8a30, SUN_R * 7, 0.22));
   // корона: тонкие радиальные «стримеры», как на снимках солнечных коронографов
@@ -148,7 +148,7 @@ export function buildMagnetosphere(root, { mobile = false, embed = false } = {})
   corona.scale.setScalar(SUN_R * 7 * 2); corona.renderOrder = -1; sun.add(corona);
   const sunParts = { inner: null, flares: [], spin: new THREE.Group() };
   sun.add(sunParts.spin);
-  if (!embed) import("./glb.js").then(({ loadGLB }) => loadGLB("models/sun.glb")).then((g) => {
+  import("./glb.js").then(({ loadGLB }) => loadGLB("models/sun.glb")).then((g) => {
     const m = g.scene;
     // масштаб — по самому шару Солнца (а не по вспышкам), чтобы диск совпал с короной
     let ball = null; m.traverse((o) => { if (o.isMesh && o.material.name === "sun_inner") ball = o; });
