@@ -238,6 +238,7 @@ function render() {
 
 function start(from = 0) {
   state.on = true;
+  window.__music?.duck(true); // голос гида громче музыки
   setupAnalyser();
   dock.hidden = false;
   requestAnimationFrame(() => dock.classList.add("open"));
@@ -247,6 +248,7 @@ function start(from = 0) {
 }
 function stop(finished = false) {
   state.on = false;
+  window.__music?.duck(false);
   audio.pause();
   clearInterval(state.fallbackTimer);
   dock.classList.remove("open");
