@@ -760,3 +760,7 @@ html.has-fake-fs, html.has-fake-fs body { overflow: hidden; }
 /* слои, снятые кнопкой «Снять слой», в легенде приглушены */
 .legend span.off { opacity: .35; text-decoration: line-through; }
 .peel-v { font: 500 11px var(--mono); color: var(--muted); }
+/* на компьютере кнопки темы и музыки — только значки (подписи в подсказке), на телефоне — со словами */
+@media (min-width: 761px) { .nav .btn-lbl { display: none; } #music, #theme { min-width: 34px; font-size: 15px; padding: 5px 8px; } #music s { opacity: .55; } }
+/* в мобильном меню — маленькие заголовки групп «Спутники» и «Аппараты» */
+@media (max-width: 760px) { .nav .nav-drop-btn { display: block; pointer-events: none; padding: 14px 10px 2px; font-size: 10px; color: var(--muted); opacity: .8; text-align: left; } }

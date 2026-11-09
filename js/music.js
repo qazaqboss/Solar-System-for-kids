@@ -31,7 +31,7 @@ async function play() {
 }
 function pause() { on = false; started = true; paint(); ramp(0.8); }
 let started = false;
-function paint() { if (!btn) return; const shown = on || (!started && pref !== "off"); btn.textContent = shown ? "♪ Музыка" : "♪ Выкл"; btn.setAttribute("aria-pressed", String(shown)); btn.title = on ? "Выключить музыку" : "Включить музыку"; }
+function paint() { if (!btn) return; const shown = on || (!started && pref !== "off"); btn.innerHTML = shown ? '♪<span class="btn-lbl"> Музыка</span>' : '<s>♪</s><span class="btn-lbl"> Выкл</span>'; btn.setAttribute("aria-pressed", String(shown)); btn.title = on ? "Выключить музыку" : "Включить музыку"; }
 
 btn?.addEventListener("click", (e) => {
   e.stopPropagation();

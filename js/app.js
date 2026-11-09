@@ -31,7 +31,8 @@ const themeBtn = $("#theme");
 function setTheme(t) {
   document.documentElement.dataset.theme = t;
   try { localStorage.setItem("theme", t); } catch {}
-  themeBtn.textContent = t === "dark" ? "☀ Светлая" : "☾ Тёмная";
+  themeBtn.innerHTML = t === "dark" ? '☀<span class="btn-lbl"> Светлая</span>' : '☾<span class="btn-lbl"> Тёмная</span>';
+  themeBtn.title = t === "dark" ? "Светлая тема" : "Тёмная тема";
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", t === "dark" ? "#0b0b0b" : "#f2f2ef");
 }
 let saved = null; try { saved = localStorage.getItem("theme"); } catch {}
@@ -883,12 +884,12 @@ function route(keepScroll = false) {
   const parts = path.split("/").filter(Boolean);
   const params = new URLSearchParams(qs || "");
   document.querySelectorAll(".nav a").forEach((a) => a.removeAttribute("aria-current"));
-  const mark = (sel) => { const el = $(`.nav a[href="${sel}"]`); el?.setAttribute("aria-current", "page"); $(".nav-drop")?.classList.toggle("cur", !!el?.closest(".drop")); };
+  const mark = (sel) => { const el = $(`.nav a[href="${sel}"]`); el?.setAttribute("aria-current", "page"); document.querySelectorAll(".nav-drop").forEach((d) => d.classList.toggle("cur", !!el && d.contains(el))); };
   $(".nav").classList.remove("open");
   if (!parts.length) { viewHome(); mark("#/"); }
   else if (parts[0] === "body") { viewBody(parts[1]); if (SYS_ORDER.includes(parts[1])) mark(`#/system/${parts[1]}`); else mark("#/planets"); }
   else if (parts[0] === "moon") { const m = findMoon(parts[1]); if (isSat(m)) { location.replace(`#/sat/${m.id}`); return; } viewMoon(parts[1]); if (m) mark(`#/system/${m.system}`); }
-  else if (parts[0] === "sat") { viewSat(parts[1]); mark("#/system/earth"); }
+  else if (parts[0] === "sat") { viewSat(parts[1]); mark($(`.nav a[href="#/sat/${parts[1]}"]`) ? `#/sat/${parts[1]}` : "#/system/earth"); }
   else if (parts[0] === "system") { viewSystem(parts[1], params); mark(`#/system/${parts[1]}`); }
   else if (parts[0] === "live") { viewLive(params); mark("#/live"); }
   else if (parts[0] === "magnet") { viewMagnet(); mark("#/planets"); }
@@ -904,7 +905,7 @@ function route(keepScroll = false) {
 }
 window.addEventListener("hashchange", () => route());
 route();
-$(".nav-drop .drop")?.addEventListener("click", () => document.activeElement?.blur?.()); // закрыть меню «Спутники» после выбора
+document.querySelectorAll(".nav-drop .drop").forEach((d) => d.addEventListener("click", () => document.activeElement?.blur?.())); // закрыть выпадающее меню после выбора
 
 // ------------------------------------------------------------ телефон горизонтально: 3D на весь экран
 {
